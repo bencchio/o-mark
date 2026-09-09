@@ -162,6 +162,40 @@ func LoadConfig() Config {
 	return cfg
 }
 
+// assignmentRe matches a top-level `key = value` line, ignoring indentation and
+// skipping comments, so setTOMLValue never rewrites a commented-out example.
+var assignmentRe = regexp.MustCompile(`^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)`)
+
+// setTOMLValue replaces the value assigned to key, leaving comments, ordering
+// and every other line untouched. A key that is absent is appended at the end,
+// so no setting is lost to a config the user trimmed down.
+func setTOMLValue(body, key, value string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		m := assignmentRe.FindStringSubmatch(line)
+		if m != nil && m[2] == key {
+			lines[i] = m[1] + key + m[3] + value
+			return strings.Join(lines, "\n")
+		}
+	}
+	if body != "" && !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	return body + key + " = " + value + "\n"
+}
+
+// tomlBool renders a Go bool the way TOML spells it.
+func tomlBool(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+// SaveConfig persists the two settings the session can change — the active
+// theme and the toolbar visibility — by substituting them in place, so the
+// comments that document every option survive the write. The whole file is
+// encoded from scratch only when there is nothing on disk to edit.
 func SaveConfig(cfg Config) {
 	dir := ConfigDir()
 	if !filepath.IsAbs(dir) {
@@ -172,7 +206,28 @@ func SaveConfig(cfg Config) {
 		log.Printf("config: cannot create dir: %v", err)
 		return
 	}
-	f, err := os.Create(filepath.Join(dir, "config.toml"))
+	p := filepath.Join(dir, "config.toml")
+
+	body, err := os.ReadFile(p)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("config: cannot read %s, rewriting it whole: %v", p, err)
+		}
+		encodeConfig(p, cfg)
+		return
+	}
+
+	updated := setTOMLValue(string(body), "viewer_theme", strconv.Quote(cfg.ViewerTheme))
+	if cfg.ToolbarVisible != nil {
+		updated = setTOMLValue(updated, "toolbar_visible", tomlBool(*cfg.ToolbarVisible))
+	}
+	if err := os.WriteFile(p, []byte(updated), 0644); err != nil {
+		log.Printf("config: cannot write: %v", err)
+	}
+}
+
+func encodeConfig(path string, cfg Config) {
+	f, err := os.Create(path)
 	if err != nil {
 		log.Printf("config: cannot write: %v", err)
 		return

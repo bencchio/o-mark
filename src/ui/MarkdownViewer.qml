@@ -18,6 +18,7 @@ Item {
     function requestFocus() { webView.forceActiveFocus() }
 
     property real savedScrollY: 0
+    property string savedNavState: ""
     property bool firstLoadComplete: false
 
     Shortcut {
@@ -33,18 +34,24 @@ Item {
         onActivated: webView.zoomFactor = 1.0
     }
 
-    // Preserve scroll position across reloads (doc reload or theme/palette change).
-    // On the initial load firstLoadComplete is false, so we skip the JS round-trip.
+    // Preserve scroll position and the navigation cursor across reloads (doc
+    // reload or theme/palette change). On the initial load firstLoadComplete is
+    // false, so we skip the JS round-trip.
     onActiveHtmlChanged: {
         if (!activeHtml) return
         if (!firstLoadComplete) {
             webView.loadHtml(activeHtml, "o-mark://document")
             return
         }
-        webView.runJavaScript("window.scrollY", function(y) {
-            savedScrollY = y || 0
-            webView.loadHtml(activeHtml, "o-mark://document")
-        })
+        webView.runJavaScript(
+            "JSON.stringify({y: window.scrollY, nav: window.oMark ? window.oMark.serialize() : null})",
+            function(json) {
+                var state = {}
+                try { state = JSON.parse(json || "{}") } catch(e) {}
+                savedScrollY = state.y || 0
+                savedNavState = state.nav ? JSON.stringify(state.nav) : ""
+                webView.loadHtml(activeHtml, "o-mark://document")
+            })
     }
 
     WebEngineView {
@@ -61,11 +68,22 @@ Item {
             var scripts; try { scripts = JSON.parse(postLoadScripts) } catch(e) { scripts = [] }
             for (var i = 0; i < scripts.length; i++)
                 webView.runJavaScript(scripts[i])
+            // Restore the navigation cursor (and marking selection, if any)
+            // after the post-load scripts rebuild the word list. Scroll wins
+            // over cursor: the active word stays logical and auto-scroll brings
+            // it into view on the next navigation move.
+            if (savedNavState)
+                webView.runJavaScript("window.oMark && window.oMark.restore(" + savedNavState + ")")
         }
 
         onNavigationRequested: function(request) {
+            // Form submits go through the same scheme filter as link clicks: a
+            // navigation is accepted unless rejected, so anything skipped here
+            // bypasses the checks below. Other types (programmatic navigation,
+            // including the loadHtml that renders the document) must pass.
             var t = request.navigationType
-            if (t !== WebEngineNavigationRequest.LinkClickedNavigation) return
+            if (t !== WebEngineNavigationRequest.LinkClickedNavigation
+                && t !== WebEngineNavigationRequest.FormSubmittedNavigation) return
             var url = request.url.toString()
             if (url.startsWith("http://") || url.startsWith("https://")) {
                 request.reject()

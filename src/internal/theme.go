@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/BurntSushi/toml"
 )
 
 type ThemePalette struct {
@@ -24,11 +22,6 @@ type ThemePalette struct {
 	HeadingColor string
 	SelectionBg  string
 	SelectionFg  string
-}
-
-type omarchyTheme struct {
-	Name   string
-	Colors ThemePalette
 }
 
 func builtinPalette(dark bool) ThemePalette {
@@ -62,13 +55,24 @@ func builtinPalette(dark bool) ThemePalette {
 	}
 }
 
+// OmarchyStateEnv overrides the directory holding the active Omarchy theme
+// state, for an install that keeps it somewhere other than the default.
+const OmarchyStateEnv = "O_MARK_OMARCHY_STATE"
+
 // OmarchyStatePath joins parts onto the directory where Omarchy 4.0 keeps the
 // active theme state. Omarchy 3.x kept it under ~/.config/omarchy/current, and
 // an upgraded system still resolves that path through a compatibility symlink,
 // but a clean 4.0 install does not create one — so this reads the canonical
 // location directly rather than depending on the symlink.
 func OmarchyStatePath(parts ...string) string {
-	return filepath.Join(append([]string{homeDir(), ".local/state/omarchy/current"}, parts...)...)
+	return filepath.Join(append([]string{omarchyStateDir()}, parts...)...)
+}
+
+func omarchyStateDir() string {
+	if dir := os.Getenv(OmarchyStateEnv); dir != "" {
+		return dir
+	}
+	return filepath.Join(homeDir(), ".local/state/omarchy/current")
 }
 
 func ReadOmarchyFont() string {
@@ -91,27 +95,6 @@ func ReadOmarchyFont() string {
 	}
 	log.Printf("warning: no font-family found in %s; falling back to JetBrains Mono NF", cssFile)
 	return "JetBrains Mono NF"
-}
-
-func readOmarchyThemeName() string {
-	nameFile := OmarchyStatePath("theme.name")
-	data, err := os.ReadFile(nameFile)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-func detectOmarchyTheme() *omarchyTheme {
-	name := readOmarchyThemeName()
-	if name == "" {
-		return nil
-	}
-	palette := loadOmarchyColors(name)
-	if palette == nil {
-		return nil
-	}
-	return &omarchyTheme{Name: name, Colors: *palette}
 }
 
 // parseHex splits a #RRGGBB string into its R, G, B components.
@@ -144,65 +127,12 @@ func blendHex(a, b string, t float64) string {
 	return fmt.Sprintf("#%02x%02x%02x", blend(r1, r2), blend(g1, g2), blend(b1, b2))
 }
 
-// loadOmarchyColors loads the current active Omarchy palette.
-// The name parameter is kept for the omarchyTheme struct but the palette
-// is always read from the active theme's colors.toml under the Omarchy state
-// directory.
-func loadOmarchyColors(name string) *ThemePalette {
-	path := OmarchyStatePath("theme", "colors.toml")
-	var raw map[string]string
-	if _, err := toml.DecodeFile(path, &raw); err != nil {
-		return nil
-	}
-
-	get := func(keys ...string) string {
-		for _, k := range keys {
-			if v, ok := raw[k]; ok && v != "" {
-				return v
-			}
-		}
-		return ""
-	}
-
-	bg := get("background", "color0")
-	fg := get("foreground", "color15", "color7")
-	if bg == "" || fg == "" {
-		return nil
-	}
-
-	accent := get("accent", "color4")
-
-	// Border and surface are blended from fg→bg to guarantee contrast regardless
-	// of the specific Omarchy palette (color8 is often too close to background).
-	// For light themes (bg lighter than fg), increase factors so the derived
-	// colors remain clearly visible.
-	borderFactor := 0.35
-	surfaceFactor := 0.15
-	if luminance(bg) > luminance(fg) {
-		borderFactor = 0.55
-		surfaceFactor = 0.25
-	}
-	border := blendHex(fg, bg, borderFactor)
-	surface := blendHex(fg, bg, surfaceFactor)
-	selBg := get("selection_background", "accent", "color4")
-	selFg := get("selection_foreground", "background")
-	if selFg == "" {
-		selFg = bg
-	}
-
-	return &ThemePalette{
-		Background:   bg,
-		Foreground:   fg,
-		Accent:       accent,
-		Surface:      surface,
-		Border:       border,
-		CodeBg:       surface,
-		CodeFg:       fg,
-		LinkColor:    accent,
-		HeadingColor: fg,
-		SelectionBg:  selBg,
-		SelectionFg:  selFg,
-	}
+// normalizedFontName strips spaces and folds case, so "JetBrains Mono" lines
+// up with fontconfig's own "JetBrainsMono" family name for a patched (e.g.
+// Nerd Font) variant — fontconfig treats them as the same family for
+// substitution purposes, but a literal string compare would not.
+func normalizedFontName(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", ""))
 }
 
 // VerifyFontStack checks if at least one font in the comma-separated stack is
@@ -218,8 +148,17 @@ func VerifyFontStack(stack, themeLabel string) {
 		}
 		cmd := exec.Command("fc-match", "-f", "%{family}", "--", name)
 		out, err := cmd.Output()
-		if err == nil && strings.Contains(string(out), name) {
-			return
+		if err != nil {
+			continue
+		}
+		// fc-match can return several comma-separated aliases for the matched
+		// family; any one of them starting with the requested name (modulo
+		// spacing/case) counts as a real match, not just a generic fallback.
+		want := normalizedFontName(name)
+		for _, family := range strings.Split(string(out), ",") {
+			if strings.HasPrefix(normalizedFontName(family), want) {
+				return
+			}
 		}
 	}
 	log.Printf("warning: none of [%s] found on system; theme %s will use fallback", stack, themeLabel)
@@ -230,8 +169,8 @@ func GetThemePalette(mode string) ThemePalette {
 	case "dark":
 		return builtinPalette(true)
 	case "omarchy":
-		if t := detectOmarchyTheme(); t != nil {
-			return t.Colors
+		if p, ok := paletteFromOmarchy(); ok {
+			return p
 		}
 		return builtinPalette(false)
 	default:

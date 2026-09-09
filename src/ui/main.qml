@@ -53,11 +53,12 @@ Window {
         id: container
         anchors.fill: parent
 
-        // Fixed chrome height: 36 (Toolbar) + 2 (separator).
-        // All vertical positions are computed from parent.height + this constant
-        // to avoid cross-sibling anchor dependencies that cause layout glitches
-        // when toolbarPosition changes at runtime.
-        readonly property int _chrome: 38
+        // All vertical positions are computed from parent.height and these two
+        // values to avoid cross-sibling anchor dependencies that cause layout
+        // glitches when toolbarPosition changes at runtime. The bar height comes
+        // from the Toolbar itself, so it is defined in exactly one place.
+        readonly property int _separator: 2
+        readonly property int _chrome: toolbar.height + _separator
 
         MarkdownViewer {
             id: viewer
@@ -73,9 +74,9 @@ Window {
             id: separator
             anchors.left: parent.left
             anchors.right: parent.right
-            // Top position: just below toolbar (y=36). Bottom position: just above toolbar.
-            y: root.toolbarPosition === "top" ? 36 : parent.height - container._chrome
-            height: 2
+            // Top position: just below the toolbar. Bottom: just above it.
+            y: root.toolbarPosition === "top" ? toolbar.height : parent.height - container._chrome
+            height: container._separator
             visible: root.toolbarVisible
             color: toolbar.hasFocus ? colors.accent : colors.border
         }
@@ -84,7 +85,7 @@ Window {
             id: toolbar
             anchors.left: parent.left
             anchors.right: parent.right
-            y: root.toolbarPosition === "top" ? 0 : parent.height - 36
+            y: root.toolbarPosition === "top" ? 0 : parent.height - height
             visible: root.toolbarVisible
             colors: colors
             zoomFactor: viewer.zoomFactor

@@ -216,7 +216,8 @@ fi
 #  1. Build
 # =====================================================================
 info "Building O'Mark"
-( cd "$REPO_ROOT/src" && go build -o target/"$BIN_NAME" . )
+    export CGO_CXXFLAGS="${CGO_CXXFLAGS:+$CGO_CXXFLAGS }-Wno-sfinae-incomplete"
+    ( cd "$REPO_ROOT/src" && go build -o target/"$BIN_NAME" . )
 ok "Built $REPO_ROOT/src/target/$BIN_NAME"
 echo
 

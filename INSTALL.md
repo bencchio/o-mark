@@ -1,13 +1,17 @@
 # Installing O'Mark
 
+On Arch, prefer the package in [README.md § Install](README.md): install
+[omarchy-theme](https://github.com/bencchio/omarchy-theme), then
+`cd packaging/arch && makepkg -si`. This page is the copy-to-prefix path.
+
 ## 1. Build
 
 ```bash
 cd src
-go build -o target/o-mark .
+CGO_CXXFLAGS="-Wno-sfinae-incomplete" go build -o target/o-mark .
 ```
 
-Requirements: Go 1.21+, Qt6 (`qt6-base`, `qt6-declarative`), CGO enabled.
+Requirements: Go 1.26+, Qt6 (`qt6-base`, `qt6-declarative`, `qt6-webengine`), CGO enabled.
 
 ## 2. Install
 

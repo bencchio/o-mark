@@ -22,7 +22,7 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.5.3"
+var version = "0.6.5"
 
 func paletteJSON(p internal.ThemePalette) string {
 	m := map[string]string{
@@ -52,6 +52,9 @@ func extractUI() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The RemoveAll results below are deliberately unchecked: they clean up a
+	// temp dir on a path that is already returning an error, and reporting a
+	// second failure would only bury the one that matters.
 	entries, err := fs.ReadDir(uiFiles, "ui")
 	if err != nil {
 		os.RemoveAll(dir)
@@ -107,22 +110,50 @@ func setContextProperties(ctx *qml.QQmlContext, title, raw, docDir string, p int
 	ctx.SetContextProperty2("postLoadScripts", qt.NewQVariant14(string(postLoad)))
 }
 
-// startThemeWatcher watches the Omarchy theme files and updates context properties
-// on change. cfg is a pointer so re-renders always use the latest config values.
-// A singleShot(0) fires on the first event loop tick to self-correct a failed
-// startup palette read without waiting for a file event.
+// watchPath adds path to watcher, reporting the failure instead of leaving a
+// watcher that silently never fires. A dropped watch means live reloading stops
+// working with nothing on screen to say so.
+func watchPath(watcher *qt.QFileSystemWatcher, path string) {
+	if !watcher.AddPath(path) {
+		log.Printf("warning: cannot watch %s; changes to it will not be picked up until restart", path)
+	}
+}
+
+// startThemeWatcher follows the Omarchy theme (color, via libomarchy-theme)
+// and font (file, via inotify — the library is colors-only) and updates
+// context properties on change. cfg is a pointer so re-renders always use
+// the latest config values. A singleShot(0) fires on the first event loop
+// tick to self-correct a failed startup palette read without waiting for a
+// theme or file event.
 func startThemeWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, p internal.ThemePalette, diskThemes []internal.ViewerTheme, themesDir string, cfg *internal.Config, font string) {
 	currentP := p
 	currentFont := font
 
+	// omarchyWatcher stays nil when the library found no active theme to
+	// follow (e.g. Omarchy not running) — update falls back to
+	// GetThemePalette's own builtin fallback in that case.
+	omarchyWatcher, err := internal.NewOmarchyThemeWatcher()
+	if err != nil {
+		log.Printf("warning: cannot watch the Omarchy theme, colors will not update live: %v", err)
+	}
+
 	update := func() {
 		newP := internal.GetThemePalette("omarchy")
+		if omarchyWatcher != nil {
+			newP = omarchyWatcher.Palette()
+		}
 		newFont := internal.ReadOmarchyFont()
 		if newP == currentP && newFont == currentFont {
 			return
 		}
 		currentP = newP
 		currentFont = newFont
+		// Order is load-bearing. The first two feed pure QML bindings (chrome
+		// colors and font), which repaint on the next frame — unreachable while
+		// this function holds the GUI thread. viewerThemesJson is the only one
+		// with a side effect (onActiveHtmlChanged reloads the document), so it
+		// goes last, already rendered from the new palette and font. Publishing
+		// it first would reload the document against stale chrome.
 		ctx.SetContextProperty2("omarchyPaletteJson", qt.NewQVariant14(paletteJSON(newP)))
 		ctx.SetContextProperty2("omarchyFont", qt.NewQVariant14(newFont))
 		ctx.SetContextProperty2("viewerThemesJson", qt.NewQVariant14(internal.RenderViewerThemesJSON(*rawPtr, newP, docDir, diskThemes, themesDir, *cfg, newFont)))
@@ -134,18 +165,29 @@ func startThemeWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, p in
 	initShot.OnTimeout(update)
 	initShot.Start2()
 
+	if omarchyWatcher != nil {
+		notifier := qt.NewQSocketNotifier2(uintptr(omarchyWatcher.SignalFD()), qt.QSocketNotifier__Read)
+		notifier.OnActivated(func(socket qt.QSocketDescriptor, activationEvent qt.QSocketNotifier__Type) {
+			// The poll itself decides whether a valid change landed; its result is
+			// discarded in favor of update()'s own read so both watchers publish
+			// through the exact same path.
+			if _, changed := omarchyWatcher.PollChanged(); changed {
+				update()
+			}
+		})
+	}
+
 	if _, err := os.UserHomeDir(); err != nil {
-		log.Printf("warning: cannot determine home directory, theme file watcher disabled: %v", err)
+		log.Printf("warning: cannot determine home directory, font file watcher disabled: %v", err)
 		return
 	}
 
-	watcher := qt.NewQFileSystemWatcher()
-	watcher.AddPath(internal.OmarchyStatePath("theme", "colors.toml"))
-	watcher.AddPath(internal.OmarchyStatePath("theme.name"))
-	watcher.OnFileChanged(func(path string) {
+	fontWatcher := qt.NewQFileSystemWatcher()
+	watchPath(fontWatcher, internal.OmarchyStatePath("theme", "hyprland-preview-share-picker.css"))
+	fontWatcher.OnFileChanged(func(path string) {
 		// Re-add: editors that atomically replace files (rename-over) change the
 		// inode, causing inotify to drop the watch after the first event.
-		watcher.AddPath(path)
+		watchPath(fontWatcher, path)
 		update()
 	})
 }
@@ -155,17 +197,17 @@ func startThemeWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, p in
 // then re-renders all themes so CSS changes take effect immediately.
 func startConfigWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, diskThemes []internal.ViewerTheme, themesDir string, cfg *internal.Config, font string) {
 	watcher := qt.NewQFileSystemWatcher()
-	watcher.AddPath(filepath.Join(internal.ConfigDir(), "config.toml"))
+	watchPath(watcher, filepath.Join(internal.ConfigDir(), "config.toml"))
 	for _, t := range diskThemes {
 		cssPath := filepath.Join(themesDir, t.ID+".css")
 		if _, err := os.Stat(cssPath); err == nil {
-			watcher.AddPath(cssPath)
+			watchPath(watcher, cssPath)
 		}
 	}
 
 	watcher.OnFileChanged(func(path string) {
 		// Re-add after inotify drops the watch on atomic-replace saves.
-		watcher.AddPath(path)
+		watchPath(watcher, path)
 		newCfg := internal.LoadConfig()
 		newCfg.ViewerTheme = cfg.ViewerTheme // session theme is not overridden by config edits
 		*cfg = newCfg
@@ -211,9 +253,9 @@ func startDocWatcher(ctx *qml.QQmlContext, absPath, docDir string, diskThemes []
 	debounce.OnTimeout(reload)
 
 	watcher := qt.NewQFileSystemWatcher()
-	watcher.AddPath(absPath)
+	watchPath(watcher, absPath)
 	watcher.OnFileChanged(func(path string) {
-		watcher.AddPath(path)
+		watchPath(watcher, path)
 		debounce.Start2()
 	})
 }

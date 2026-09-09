@@ -1,24 +1,23 @@
-# Tema del visor al arrancar. Se sobrescribe al salir con el tema activo de la sesión.
-# Valores: "system" (paleta Omarchy) | "github" | "writer" | "night" | "sepia" | "mono" | "minimal"
+# Viewer theme at launch. Overwritten on quit with the theme active in the session.
+# Values: "system" (Omarchy palette) | "github" | "writer" | "night" | "sepia" | "mono" | "minimal"
 viewer_theme = "github"
 
-# Ancho máximo del cuerpo del documento. "default" = tomar el ancho que define
-# cada tema; o una longitud CSS (mm, px, %, ch...).
+# Maximum document body width. "default" = use the width each theme defines;
+# or a CSS length (mm, px, %, ch...).
 document_max_width = "default"
 
-# Tamaño de fuente base del documento. "default" = tomar la fuente que define
-# cada tema; o un tamaño en px (ej. "16" o "17px").
+# Base document font size. "default" = use the size each theme defines;
+# or a size in px (e.g. "16" or "17px").
 font_size_base = "default"
 
-# Muestra las barras de scroll nativas del navegador (WebEngineView).
+# Show the native browser scrollbars (WebEngineView).
 show_scrollbars = false
 
-# Muestra los números de línea en los bloques de código. Los bloques de una
-# sola línea nunca los llevan.
+# Show line numbers on code blocks. Single-line blocks never show them.
 code_line_numbers = true
 
-# Posición del toolbar: "top" | "bottom".
+# Toolbar position: "top" | "bottom".
 toolbar_position = "bottom"
 
-# Visibilidad del toolbar al arrancar. Se sobrescribe al salir con el estado de la sesión (Esc).
+# Toolbar visibility at launch. Overwritten on quit with the session state (Esc).
 toolbar_visible = false

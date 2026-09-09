@@ -6,12 +6,31 @@ O'Mark is built to be used from the keyboard. This page lists every shortcut.
 
 | Action | Keyboard | Mouse |
 |---|---|---|
-| Scroll one line | `↑` / `↓` | Wheel / trackpad |
-| Scroll one page | `PgUp` / `PgDn` | — |
-| Jump to the top | `Home` | — |
-| Jump to the bottom | `End` | — |
+| Scroll one page | `PgUp` / `PgDn` | Wheel / trackpad |
 | Move to the next / previous link | `Tab` / `Shift+Tab` | — |
 | Open the focused link | `Enter` | Click the link |
+
+## Navigating text
+
+The active word is highlighted as you read. The arrow keys move that highlight
+through the document instead of scrolling (scrolling is `PgUp` / `PgDn`).
+
+| Action | Keyboard |
+|---|---|
+| Next / previous word | `→` / `←` |
+| Nearest word on the line above / below | `↑` / `↓` |
+| Next / previous sentence | `Ctrl+→` / `Ctrl+←` |
+| Next / previous paragraph | `Ctrl+↑` / `Ctrl+↓` |
+| First / last word of the current line | `Home` / `End` |
+| First / last word of the document | `Ctrl+Home` / `Ctrl+End` |
+| Start / stop selecting (marks the current word as the anchor) | `Space` |
+| Copy the selection, or the active word if there is none | `Super+C` |
+
+While selecting, the same movement keys expand or shrink the marked range from
+the anchor. `Space` stops selecting, clears the range, and returns the cursor
+to the anchor word. `Super+C` copies and stops selecting too, but keeps the
+range highlighted. Clicking the document moves the highlight to that word and
+clears any selection.
 
 Links to other `.md` files open in a new O'Mark window. This needs O'Mark
 registered as your markdown handler — see [INSTALL.md](../INSTALL.md).

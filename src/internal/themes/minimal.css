@@ -105,6 +105,8 @@ pre.mermaid { background-color: #f0f0f0; border: none; border-radius: 4px; paddi
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #1a1a1a; }
 
 :root {
+	--o-mark-nav-mark-bg: #d0d8e0;
+	--o-mark-nav-cursor: #5a6a7a;
 	--o-mark-hl-keyword: #333333;
 	--o-mark-hl-string: #4a6357;
 	--o-mark-hl-comment: #a0a0a0;

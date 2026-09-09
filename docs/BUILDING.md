@@ -12,8 +12,10 @@
 
 ```bash
 cd src
-go build -o target/o-mark .
+CGO_CXXFLAGS="-Wno-sfinae-incomplete" go build -o target/o-mark .
 ```
+
+`CGO_CXXFLAGS` silences Qt/g++ warnings from miqt (`-Wsfinae-incomplete`). `scripts/install.sh` sets the same flag.
 
 QML files, the default config, and the bundled JavaScript libraries (KaTeX,
 Mermaid, highlight.js) are all embedded at compile time, so the resulting
@@ -25,6 +27,19 @@ binary is self-contained and works offline.
 ./target/o-mark <file.md>
 ./target/o-mark --version
 ```
+
+## Testing
+
+```bash
+cd src
+go test ./...
+go vet ./...
+```
+
+The suite in `src/internal/*_test.go` covers math, `$` flanking, code-fence
+detection, post-load injection, highlight CSS order, config decoding and theme
+invariants. The files under `examples/` double as manual rendering checks —
+open each with the app to validate output the automated tests cannot assert.
 
 ## Version
 

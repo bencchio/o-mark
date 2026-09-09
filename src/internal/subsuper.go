@@ -14,13 +14,13 @@ var KindSup = ast.NewNodeKind("Superscript")
 
 type subNode struct{ ast.BaseInline }
 
-func (n *subNode) Kind() ast.NodeKind            { return KindSub }
-func (n *subNode) Dump(src []byte, level int)    { ast.DumpHelper(n, src, level, nil, nil) }
+func (n *subNode) Kind() ast.NodeKind         { return KindSub }
+func (n *subNode) Dump(src []byte, level int) { ast.DumpHelper(n, src, level, nil, nil) }
 
 type supNode struct{ ast.BaseInline }
 
-func (n *supNode) Kind() ast.NodeKind            { return KindSup }
-func (n *supNode) Dump(src []byte, level int)    { ast.DumpHelper(n, src, level, nil, nil) }
+func (n *supNode) Kind() ast.NodeKind         { return KindSup }
+func (n *supNode) Dump(src []byte, level int) { ast.DumpHelper(n, src, level, nil, nil) }
 
 // delimParser parses inline syntax: Xcontentx → <tag>content</tag>.
 // Does not span newlines. When double=false, rejects doubled delimiters at open

@@ -173,7 +173,6 @@ var md = goldmark.New(
 	),
 )
 
-
 func LoadFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -54,5 +55,75 @@ func TestConfigOverrideCSSLineNumbers(t *testing.T) {
 	}
 	if got := ConfigOverrideCSS(Config{}); strings.Contains(got, "display: none") {
 		t.Error("an absent key must default to showing the gutter")
+	}
+}
+
+// Saving on exit used to re-encode the whole file, dropping the comments that
+// document what every option accepts.
+func TestSaveConfigPreservesComments(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	original := "# Tema del visor al arrancar.\nviewer_theme = \"github\"\n\n# Visibilidad del toolbar.\ntoolbar_visible = false\n"
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	visible := true
+	SaveConfig(Config{ViewerTheme: "night", ToolbarVisible: &visible})
+
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(got)
+	for _, comment := range []string{"# Tema del visor al arrancar.", "# Visibilidad del toolbar."} {
+		if !strings.Contains(body, comment) {
+			t.Errorf("comment %q was dropped", comment)
+		}
+	}
+	if !strings.Contains(body, `viewer_theme = "night"`) {
+		t.Errorf("viewer_theme was not updated, got:\n%s", body)
+	}
+	if !strings.Contains(body, "toolbar_visible = true") {
+		t.Errorf("toolbar_visible was not updated, got:\n%s", body)
+	}
+}
+
+// With nothing on disk to edit, the whole file still gets written.
+func TestSaveConfigWritesWholeFileWhenMissing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	SaveConfig(Config{ViewerTheme: "sepia"})
+
+	got, err := os.ReadFile(filepath.Join(home, ".config", "o-mark", "config.toml"))
+	if err != nil {
+		t.Fatalf("config was not created: %v", err)
+	}
+	if !strings.Contains(string(got), `viewer_theme = "sepia"`) {
+		t.Errorf("viewer_theme missing, got:\n%s", got)
+	}
+}
+
+func TestSetTOMLValue(t *testing.T) {
+	cases := []struct {
+		name, body, key, value, want string
+	}{
+		{"replaces the value", "viewer_theme = \"github\"\n", "viewer_theme", `"night"`, "viewer_theme = \"night\"\n"},
+		{"appends a missing key", "# only a comment\n", "toolbar_visible", "true", "# only a comment\ntoolbar_visible = true\n"},
+		{"leaves a commented example alone", "# viewer_theme = \"mono\"\nviewer_theme = \"github\"\n", "viewer_theme", `"night"`, "# viewer_theme = \"mono\"\nviewer_theme = \"night\"\n"},
+		{"keeps the surrounding spacing", "  viewer_theme   =   \"github\"\n", "viewer_theme", `"night"`, "  viewer_theme   =   \"night\"\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := setTOMLValue(c.body, c.key, c.value); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
 	}
 }

@@ -13,36 +13,50 @@ import (
 var builtinOrder = []string{"github", "writer", "night", "sepia", "mono", "minimal"}
 
 var builtinLabels = map[string]string{
-	"github": "GitHub",
-	"writer": "Writer",
-	"night":  "Night",
-	"sepia":  "Sepia",
-	"mono":   "Mono",
+	"github":  "GitHub",
+	"writer":  "Writer",
+	"night":   "Night",
+	"sepia":   "Sepia",
+	"mono":    "Mono",
 	"minimal": "Minimal",
 }
 
 var builtinBgs = map[string]string{
-	"github": "#ffffff",
-	"writer": "#e8e0d0",
-	"night":  "#15171a",
-	"sepia":  "#faf0e0",
-	"mono":   "#1a1a1a",
+	"github":  "#ffffff",
+	"writer":  "#e8e0d0",
+	"night":   "#15171a",
+	"sepia":   "#faf0e0",
+	"mono":    "#1a1a1a",
 	"minimal": "#fafafa",
 }
 
 // ExportBuiltinThemes writes the embedded CSS for each built-in theme to dir,
-// always overwriting so disk files stay in sync with the embedded version.
-// User customizations should use a distinct filename (e.g. my-github.css).
+// never overwriting a file that already exists: a theme the user edited by hand
+// wins over the embedded version. Deleting a file restores it on the next run,
+// and DiskThemeCSS falls back to the embedded CSS while it is missing.
 func ExportBuiltinThemes(dir string) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		log.Printf("themes: cannot create %s: %v", dir, err)
 		return
 	}
 	for _, id := range builtinOrder {
-		if css := ThemeCSS(id); css != "" {
-			if err := os.WriteFile(filepath.Join(dir, id+".css"), []byte(css), 0644); err != nil {
+		css := ThemeCSS(id)
+		if css == "" {
+			continue
+		}
+		// O_EXCL leaves no window between checking for the file and writing it.
+		f, err := os.OpenFile(filepath.Join(dir, id+".css"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err != nil {
+			if !errors.Is(err, os.ErrExist) {
 				log.Printf("themes: cannot export %s: %v", id, err)
 			}
+			continue
+		}
+		if _, err := f.Write([]byte(css)); err != nil {
+			log.Printf("themes: cannot export %s: %v", id, err)
+		}
+		if err := f.Close(); err != nil {
+			log.Printf("themes: cannot export %s: %v", id, err)
 		}
 	}
 }

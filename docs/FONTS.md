@@ -8,7 +8,6 @@ which are available on most Linux distributions.
 
 ```
 sudo pacman -S inter-font ttf-jetbrains-mono tex-gyre-fonts adobe-source-serif-fonts
-
 ```
 
 ## Ubuntu / Debian
@@ -25,8 +24,9 @@ sudo apt install fonts-inter fonts-source-serif-4 fonts-jetbrains-mono tex-gyre-
 | night   | Inter            | — (same as above)     | —                      |
 | minimal | Inter            | — (same as above)     | —                      |
 | writer  | Liberation Serif | (bundled with system) | (bundled with system)  |
-| sepia   | Source Serif 4   | `ttf-source-serif-4`  | `fonts-source-serif-4` |
+| sepia   | Liberation Serif | (bundled with system) | (bundled with system)  |
 | mono    | JetBrains Mono   | `ttf-jetbrains-mono`  | `fonts-jetbrains-mono` |
 
 **Note:** Liberation Serif is included in `libreoffice` or `liberation-fonts`.
-It is typically already installed on most Linux systems.
+It is typically already installed on most Linux systems. Both `writer` and
+`sepia` rely on it as their primary font.

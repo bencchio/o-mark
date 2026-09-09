@@ -1,0 +1,28 @@
+# Maintainer: bencchio <bencchio@gmail.com>
+pkgname=o-mark
+pkgver=0.6.5
+pkgrel=1
+pkgdesc="Minimalist markdown viewer"
+arch=('x86_64')
+url="https://github.com/bencchio/o-mark"
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'omarchy-theme')
+makedepends=('go' 'gcc' 'pkgconf')
+
+_root="$(cd "${startdir}/../.." && pwd)"
+
+build() {
+	cd "${_root}/src"
+	export CGO_ENABLED=1
+	export CGO_CPPFLAGS="${CPPFLAGS}"
+	export CGO_CFLAGS="${CFLAGS}"
+	export CGO_CXXFLAGS="${CXXFLAGS} -Wno-sfinae-incomplete"
+	export CGO_LDFLAGS="${LDFLAGS}"
+	export GOFLAGS="-buildmode=pie -trimpath -ldflags=-linkmode=external"
+	go build -o "${srcdir}/o-mark" .
+}
+
+package() {
+	install -Dm755 "${srcdir}/o-mark" "${pkgdir}/usr/bin/o-mark"
+	install -Dm644 "${_root}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

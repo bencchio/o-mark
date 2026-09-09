@@ -2,6 +2,8 @@ package internal
 
 import (
 	"encoding/base64"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,18 +48,24 @@ func fallbackSpan(alt string) string {
 // replaced with a styled alt-text fallback; relative and absolute local paths
 // are read and inlined as base64 data URLs.
 func resolveImages(html, dir string) string {
-	// Resolve dir symlinks once so per-image checks are consistent.
-	canonDir := dir
-	if dir != "" {
-		if r, err := filepath.EvalSymlinks(dir); err == nil {
-			canonDir = r
-		}
+	if dir == "" {
+		return imgTagRe.ReplaceAllStringFunc(html, func(tag string) string {
+			return fallbackSpan(imgAlt(tag))
+		})
 	}
+	// A directory handle keeps containment and reading in one operation: the OS
+	// refuses any component that escapes the root, so there is no window between
+	// checking a path and opening it. Closed once every image is resolved.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return imgTagRe.ReplaceAllStringFunc(html, func(tag string) string {
+			return fallbackSpan(imgAlt(tag))
+		})
+	}
+	defer root.Close()
+
 	return imgTagRe.ReplaceAllStringFunc(html, func(tag string) string {
-		alt := ""
-		if m := imgAltRe.FindStringSubmatch(tag); m != nil {
-			alt = m[1]
-		}
+		alt := imgAlt(tag)
 		m := imgSrcRe.FindStringSubmatch(tag)
 		if m == nil {
 			return fallbackSpan(alt)
@@ -66,32 +74,51 @@ func resolveImages(html, dir string) string {
 		if isExternalSrc(src) {
 			return fallbackSpan(alt)
 		}
-		if dir == "" {
-			return fallbackSpan(alt)
+		// The root only accepts paths relative to itself; an absolute src is
+		// rewritten as one, and stays subject to the same containment check.
+		rel := src
+		if filepath.IsAbs(src) {
+			var err error
+			if rel, err = filepath.Rel(dir, src); err != nil {
+				return fallbackSpan(alt)
+			}
 		}
-		abs := src
-		if !filepath.IsAbs(src) {
-			abs = filepath.Join(dir, src)
-		}
-		// Resolve symlinks and ensure the target stays within the document directory.
-		resolved, err := filepath.EvalSymlinks(abs)
+		data, err := readRootFile(root, rel)
 		if err != nil {
 			return fallbackSpan(alt)
 		}
-		rel, err := filepath.Rel(canonDir, resolved)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-			return fallbackSpan(alt)
-		}
-		data, err := os.ReadFile(resolved)
-		if err != nil {
-			return fallbackSpan(alt)
-		}
-		mime := mimeFromExt(filepath.Ext(resolved))
+		mime := mimeFromExt(filepath.Ext(src))
 		dataURL := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
 		return imgSrcRe.ReplaceAllStringFunc(tag, func(_ string) string {
 			return `src="` + dataURL + `"`
 		})
 	})
+}
+
+// imgAlt returns the alt attribute of an <img> tag, empty when it has none.
+func imgAlt(tag string) string {
+	if m := imgAltRe.FindStringSubmatch(tag); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// readRootFile reads name from root, refusing anything that is not a regular
+// file so a device node or a fifo cannot stall the render.
+func readRootFile(root *os.Root, name string) ([]byte, error) {
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("resolveImages: %s is not a regular file", name)
+	}
+	return io.ReadAll(f)
 }
 
 var mermaidBlockRe = regexp.MustCompile(`(?s)<pre><code class="language-mermaid">(.*?)</code></pre>`)

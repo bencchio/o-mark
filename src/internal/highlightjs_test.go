@@ -33,14 +33,22 @@ func TestHasHighlightableFence(t *testing.T) {
 	}
 }
 
+// A code document gets the highlight bundle plus the word navigation module,
+// which every document loads.
 func TestPostLoadScriptsForCodeDocument(t *testing.T) {
 	code := readExample(t, "code/code.md")
 	scripts := PostLoadScripts(code)
-	if len(scripts) != 1 {
-		t.Fatalf("want 1 post-load script for a code document, got %d", len(scripts))
+	if len(scripts) != 2 {
+		t.Fatalf("want 2 post-load scripts for a code document, got %d", len(scripts))
 	}
-	if !strings.Contains(scripts[0], "lineNumbersBlock") {
-		t.Error("script is missing the line-numbers plugin")
+	var highlight string
+	for _, s := range scripts {
+		if strings.Contains(s, "lineNumbersBlock") {
+			highlight = s
+		}
+	}
+	if highlight == "" {
+		t.Error("no post-load script carries the line-numbers plugin")
 	}
 }
 

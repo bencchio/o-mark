@@ -107,6 +107,8 @@ pre.mermaid svg { filter: invert(0.85) hue-rotate(180deg); }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #c8c8c8; }
 
 :root {
+	--o-mark-nav-mark-bg: rgba(200, 160, 80, 0.25);
+	--o-mark-nav-cursor: #c8a050;
 	--o-mark-hl-keyword: #ffffff;
 	--o-mark-hl-string: #b0b0b0;
 	--o-mark-hl-comment: #6a6a6a;

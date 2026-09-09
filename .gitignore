@@ -34,3 +34,12 @@ temp/
 .opencode/
 AGENTS.md
 CLAUDE.md
+
+# Notas de prueba locales
+TO-TEST.TXT
+
+# makepkg — build del PKGBUILD de Arch
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.*
+packaging/arch/*.log
