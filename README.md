@@ -51,9 +51,20 @@ and [code/](examples/code/) for syntax highlighting across 11 languages.
 ## Install
 
 On Arch, install [omarchy-theme](https://github.com/bencchio/omarchy-theme)
-first, then build this tree:
+first.
+
+From the [0.7.0 release](https://github.com/bencchio/o-mark/releases/tag/0.7.0):
 
 ```bash
+sudo pacman -U o-mark-0.7.0-1-x86_64.pkg.tar.zst
+```
+
+Or build that tag:
+
+```bash
+git clone https://github.com/bencchio/o-mark.git
+cd o-mark
+git checkout 0.7.0
 cd packaging/arch
 makepkg -si
 ```

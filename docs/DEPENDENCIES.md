@@ -12,7 +12,8 @@
 
 Supported distributions: Arch Linux (rolling — keep the system up to date with
 `pacman -Syu`) and Ubuntu 24.04 LTS. On Arch, see [README.md § Install](../README.md)
-for `makepkg -si`. `scripts/install.sh` checks these dependencies for you.
+for the 0.7.0 package or `makepkg -si` from that tag. `scripts/install.sh`
+checks these dependencies for you.
 
 ## Go modules
 

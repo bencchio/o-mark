@@ -1,6 +1,6 @@
 # Maintainer: bencchio <bencchio@gmail.com>
 pkgname=o-mark
-pkgver=0.6.5
+pkgver=0.7.0
 pkgrel=1
 pkgdesc="Minimalist markdown viewer"
 arch=('x86_64')

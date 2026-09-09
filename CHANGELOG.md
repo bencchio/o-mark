@@ -2,6 +2,12 @@
 
 High-level history of O'Mark releases, summarized for the end user.
 
+## 0.7.0 — First Arch package on GitHub
+
+- An Arch package (`o-mark-0.7.0-1-x86_64.pkg.tar.zst`) ships with the
+  GitHub release. Install [omarchy-theme](https://github.com/bencchio/omarchy-theme)
+  first, then `pacman -U` the package or build tag `0.7.0` with `makepkg`.
+
 ## 0.6.x — Omarchy theme as a library
 
 - The System theme follows the active Omarchy palette through

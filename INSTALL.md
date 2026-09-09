@@ -1,8 +1,9 @@
 # Installing O'Mark
 
-On Arch, prefer the package in [README.md § Install](README.md): install
-[omarchy-theme](https://github.com/bencchio/omarchy-theme), then
-`cd packaging/arch && makepkg -si`. This page is the copy-to-prefix path.
+On Arch, prefer [README.md § Install](README.md): install
+[omarchy-theme](https://github.com/bencchio/omarchy-theme), then either
+`pacman -U` the 0.7.0 release package or `git checkout 0.7.0` and
+`makepkg -si`. This page is the copy-to-prefix path.
 
 ## 1. Build
 

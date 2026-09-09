@@ -22,7 +22,7 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.6.5"
+var version = "0.7.0"
 
 func paletteJSON(p internal.ThemePalette) string {
 	m := map[string]string{
