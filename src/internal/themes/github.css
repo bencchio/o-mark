@@ -59,8 +59,8 @@ blockquote {
 hr { border: none; border-top: 1px solid #dfe2e5; margin: 6mm 0; }
 table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #dfe2e5; padding: 8px 13px; text-align: left; }
-th { background-color: #f6f8fa; font-weight: bold; }
-tbody tr:nth-child(even) td { background-color: #eaecf0; }
+th { background-color: #eaeef2; font-weight: bold; border-bottom: 2px solid #d0d7de; }
+tbody tr:nth-child(even) td { background-color: #f6f8fa; }
 dt { font-weight: bold; color: #24292e; }
 dd { margin-left: 6mm; margin-bottom: 4px; }
 ::-webkit-scrollbar { display: none; }
@@ -102,3 +102,14 @@ pre.mermaid { background-color: #f6f8fa; border: 1px solid #d0d7de; border-radiu
 .o-mark-frontmatter { border-left: 3px solid #dfe2e5; margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #24292e; }
+
+:root {
+	--o-mark-hl-keyword: #cf222e;
+	--o-mark-hl-string: #0a3069;
+	--o-mark-hl-comment: #6e7781;
+	--o-mark-hl-number: #0550ae;
+	--o-mark-hl-title: #8250df;
+	--o-mark-hl-type: #953800;
+	--o-mark-hl-builtin: #0550ae;
+	--o-mark-hl-meta: #6e7781;
+}

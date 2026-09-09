@@ -51,7 +51,7 @@ func paletteCSS(p ThemePalette, font string) string {
 	--o-mark-admonition-tip: ` + tip + `;
 	--o-mark-admonition-warning: ` + warning + `;
 	--o-mark-admonition-important: ` + important + `;
-	--o-mark-admonition-caution: ` + caution + `;
+	--o-mark-admonition-caution: ` + caution + `;` + hlPaletteVars(p) + `
 }
 body {
 	font-family: var(--o-mark-font);
@@ -198,7 +198,9 @@ func renderBody(input, dir string) string {
 
 func RenderMarkdownWithCSS(input, css, dir string) string {
 	body := renderBody(input, dir)
-	head := "<style>" + css + "</style>"
+	// hljsCSS goes last so its wrap rule wins over the pre/code rules every
+	// theme defines; themes only supply the --o-mark-hl-* variables it reads.
+	head := "<style>" + css + hljsCSS() + "</style>"
 	head += InlineHead(input, body)
 	return fmt.Sprintf("<!DOCTYPE html><html><head>%s</head><body>%s</body></html>", head, body)
 }

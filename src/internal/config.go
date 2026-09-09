@@ -36,6 +36,9 @@ type Config struct {
 	ShowScrollbars   bool   `toml:"show_scrollbars"`
 	ToolbarPosition  string `toml:"toolbar_position"`
 	ToolbarVisible   *bool  `toml:"toolbar_visible"`
+	// CodeLineNumbers is a pointer because the default is on: an absent key
+	// must mean "enabled", which a plain bool cannot express.
+	CodeLineNumbers *bool `toml:"code_line_numbers"`
 }
 
 // isDeferredOrLength reports whether v is either the deferral sentinel, a
@@ -97,6 +100,7 @@ type configRaw struct {
 	ShowScrollbars   bool           `toml:"show_scrollbars"`
 	ToolbarPosition  string         `toml:"toolbar_position"`
 	ToolbarVisible   *bool          `toml:"toolbar_visible"`
+	CodeLineNumbers  *bool          `toml:"code_line_numbers"`
 }
 
 // decodeFontSizeBase resolves the raw FontSizeBase value, accepting both the
@@ -128,6 +132,7 @@ func LoadConfig() Config {
 		ShowScrollbars:   raw.ShowScrollbars,
 		ToolbarPosition:  raw.ToolbarPosition,
 		ToolbarVisible:   raw.ToolbarVisible,
+		CodeLineNumbers:  raw.CodeLineNumbers,
 	}
 	if cfg.ViewerTheme == "" {
 		cfg.ViewerTheme = "github"
@@ -149,6 +154,10 @@ func LoadConfig() Config {
 	if cfg.ToolbarVisible == nil {
 		v := false
 		cfg.ToolbarVisible = &v
+	}
+	if cfg.CodeLineNumbers == nil {
+		v := true
+		cfg.CodeLineNumbers = &v
 	}
 	return cfg
 }
@@ -207,6 +216,12 @@ func ConfigOverrideCSS(cfg Config) string {
 	}
 	if cfg.ShowScrollbars {
 		sb.WriteString("::-webkit-scrollbar { display: block; }\n")
+	}
+	// Line numbers are on unless turned off explicitly. The selector is more
+	// specific than the gutter rule in hljsCSS, so concatenation order between
+	// the two stylesheets does not matter.
+	if cfg.CodeLineNumbers != nil && !*cfg.CodeLineNumbers {
+		sb.WriteString("pre .hljs-ln-numbers { display: none; }\n")
 	}
 	return sb.String()
 }

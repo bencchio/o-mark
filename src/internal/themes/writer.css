@@ -17,7 +17,7 @@ del { text-decoration: line-through; }
 img { max-width: 100%; height: auto; }
 h1 {
 	font-family: "Liberation Serif", "DejaVu Serif", "Noto Serif", serif;
-	font-size: 3.6em;
+	font-size: 3.2em;
 	font-weight: 900;
 	line-height: 1.05;
 	letter-spacing: -0.03em;
@@ -110,3 +110,14 @@ pre.mermaid { background-color: #ddd6c5; border: 1px solid #c8c0b0; border-radiu
 .o-mark-frontmatter { border-left: 3px solid #c8c0b0; margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #1a1a1a; }
+
+:root {
+	--o-mark-hl-keyword: #8a3324;
+	--o-mark-hl-string: #4a6b3a;
+	--o-mark-hl-comment: #8a8271;
+	--o-mark-hl-number: #8a5a2b;
+	--o-mark-hl-title: #3a5f7d;
+	--o-mark-hl-type: #6b5335;
+	--o-mark-hl-builtin: #5c6b52;
+	--o-mark-hl-meta: #8a8271;
+}

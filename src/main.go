@@ -22,7 +22,7 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.4.9"
+var version = "0.5.3"
 
 func paletteJSON(p internal.ThemePalette) string {
 	m := map[string]string{
@@ -134,15 +134,14 @@ func startThemeWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, p in
 	initShot.OnTimeout(update)
 	initShot.Start2()
 
-	home, err := os.UserHomeDir()
-	if err != nil {
+	if _, err := os.UserHomeDir(); err != nil {
 		log.Printf("warning: cannot determine home directory, theme file watcher disabled: %v", err)
 		return
 	}
 
 	watcher := qt.NewQFileSystemWatcher()
-	watcher.AddPath(filepath.Join(home, ".config/omarchy/current/theme/colors.toml"))
-	watcher.AddPath(filepath.Join(home, ".config/omarchy/current/theme.name"))
+	watcher.AddPath(internal.OmarchyStatePath("theme", "colors.toml"))
+	watcher.AddPath(internal.OmarchyStatePath("theme.name"))
 	watcher.OnFileChanged(func(path string) {
 		// Re-add: editors that atomically replace files (rename-over) change the
 		// inode, causing inotify to drop the watch after the first event.

@@ -136,20 +136,6 @@ func renderAdmonitions(html string) string {
 	})
 }
 
-// mathBlockMultiRe matches multi-line $$...$$  that goldmark leaves as literal
-// text inside a <p> (the inline delimParser only sees one line at a time).
-var mathBlockMultiRe = regexp.MustCompile(`(?s)<p>\$\$[ \t]*\n(.*?)\n[ \t]*\$\$[ \t]*</p>`)
-
-// renderMathBlockMulti converts multi-line $$...$$  blocks to \[...\] for
-// KaTeX auto-render. Requires the $$ to be its own paragraph (blank lines
-// before and after in the source).
-func renderMathBlockMulti(html string) string {
-	return mathBlockMultiRe.ReplaceAllStringFunc(html, func(m string) string {
-		sub := mathBlockMultiRe.FindStringSubmatch(m)
-		return `<p>\[` + strings.TrimSpace(sub[1]) + `\]</p>`
-	})
-}
-
 // extractFrontmatter detects YAML frontmatter at the very start of a markdown
 // document (must begin with "---\n"). Returns the YAML body (without delimiters),
 // the remaining document text, and whether frontmatter was found.
@@ -205,7 +191,6 @@ func htmlPostProcess(html, dir string) string {
 	html = renderMermaidBlocks(html)
 	html = resolveImages(html, dir)
 	html = renderAdmonitions(html)
-	html = renderMathBlockMulti(html)
 	html = renderTaskListCheckboxes(html)
 	return html
 }

@@ -33,7 +33,16 @@ type delimParser struct {
 	delim    byte
 	double   bool
 	makeNode func() ast.Node
+	// flank applies flanking rules on the double=false path: the opener must
+	// not be followed by whitespace, and a closer candidate preceded by
+	// whitespace aborts the whole attempt instead of matching. Opt-in for the
+	// inline $ only, so stray dollars in prose ("costs $5 and $10") stay
+	// literal text; aborting rather than scanning on avoids greedily capturing
+	// mixed prose ("win $100 now: $x$") as math.
+	flank bool
 }
+
+func isSpaceOrTab(b byte) bool { return b == ' ' || b == '\t' }
 
 func (p *delimParser) Trigger() []byte { return []byte{p.delim} }
 
@@ -70,12 +79,18 @@ func (p *delimParser) Parse(parent ast.Node, reader text.Reader, pc parser.Conte
 	if line[1] == p.delim {
 		return nil
 	}
+	if p.flank && isSpaceOrTab(line[1]) {
+		return nil
+	}
 	end := -1
 	for i := 1; i < len(line); i++ {
 		if line[i] == '\n' || line[i] == '\r' {
 			break
 		}
 		if line[i] == p.delim {
+			if p.flank && isSpaceOrTab(line[i-1]) {
+				return nil
+			}
 			end = i
 			break
 		}

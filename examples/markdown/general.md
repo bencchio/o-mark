@@ -1,5 +1,10 @@
 # General Markdown
 
+End-to-end integration example mixing basic and advanced markdown to see
+several things at once. For per-format validation see `commonmark.md`,
+`github.md`, `obsidian.md`, `images.md` and `../extensions/extensions.md`,
+`../extensions/math.md`, `../extensions/mermaid.md`, `../code/code.md`.
+
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
 incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
 nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
@@ -55,7 +60,7 @@ func main() {
 Shell example:
 
 ```bash
-./src/target/o-mark docs/examples/general.md
+./src/target/o-mark examples/markdown/general.md
 ```
 
 ###### Heading 6 — Tables
@@ -75,83 +80,11 @@ Table with alignment:
 
 ---
 
-## Horizontal Rule (above)
-
 ## Links and Images
 
 External link: [OpenStreetMap](https://www.openstreetmap.org)
 
-Local image (see images.md for full image tests). External URLs show the alt text as fallback:
+Local image (see `images.md` for the full image test matrix). External URLs
+show the alt text as fallback:
 
 ![Alt text for image](https://via.placeholder.com/400x200)
-
----
-
-## Definition Lists
-
-Term
-: Definition of the term with lorem ipsum dolor sit amet.
-
-Another Term
-: First definition line.
-: Second definition line for the same term.
-
-## Task Lists
-
-- [x] Completed task
-- [ ] Pending task
-- [x] Another completed task
-- [ ] Final pending task
-
----
-
-## Footnotes
-
-Here is a sentence with a footnote.[^1] And another one.[^2]
-
-[^1]: This is the first footnote content.
-[^2]: This is the second footnote, with `inline code` inside.
-
-## Subscript and Superscript
-
-Water molecule: H~2~O. Energy: E=mc^2^. Carbon-14: C~14~. Footnote-style: x^n+1^.
-
-## Highlight
-
-==Highlighted text== with ==lorem ipsum== and normal text in between.
-
-## Math (LaTeX)
-
-Inline: $E = mc^2$ and $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$.
-
-Block:
-
-$$
-\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}
-$$
-
-## Mermaid Diagram
-
-```mermaid
-graph TD
-    A[Lorem] --> B[Ipsum]
-    B --> C[Dolor]
-    C --> D[Sit Amet]
-```
-
-## Admonitions / Callouts
-
-> [!NOTE]
-> Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-
-> [!TIP]
-> Ut enim ad minim veniam, quis nostrud exercitation ullamco.
-
-> [!WARNING]
-> Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-
-> [!IMPORTANT]
-> Duis aute irure dolor in reprehenderit in voluptate velit esse.
-
-> [!CAUTION]
-> Excepteur sint occaecat cupidatat non proident, sunt in culpa.

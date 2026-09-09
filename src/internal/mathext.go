@@ -35,6 +35,15 @@ func (r *mathRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 type MathExtension struct{}
 
 func (e MathExtension) Extend(m goldmark.Markdown) {
+	// Multi-line $$ is a block (mathblock.go), so its LaTeX never reaches
+	// inline parsing. goldmark buckets block parsers by trigger byte and tries
+	// the triggered ones before the untriggered ones (paragraph among them),
+	// so this beats paragraph regardless of the number below; the priority
+	// only orders parsers that trigger on the same byte, and nothing else
+	// triggers on '$'.
+	m.Parser().AddOptions(parser.WithBlockParsers(
+		util.Prioritized(&mathDisplayParser{}, 750),
+	))
 	m.Parser().AddOptions(parser.WithInlineParsers(
 		// $$block$$ must run before $inline$ so the double-$ is consumed first.
 		util.Prioritized(&delimParser{
@@ -46,9 +55,12 @@ func (e MathExtension) Extend(m goldmark.Markdown) {
 			delim:    '$',
 			double:   false,
 			makeNode: func() ast.Node { return &mathInlineNode{} },
+			// Flanking keeps stray dollars in prose (currency, $vars) literal.
+			flank: true,
 		}, 601),
 	))
 	m.Renderer().AddOptions(renderer.WithNodeRenderers(
 		util.Prioritized(&mathRenderer{}, 500),
+		util.Prioritized(&mathDisplayRenderer{}, 500),
 	))
 }

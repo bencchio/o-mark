@@ -62,8 +62,17 @@ func builtinPalette(dark bool) ThemePalette {
 	}
 }
 
+// OmarchyStatePath joins parts onto the directory where Omarchy 4.0 keeps the
+// active theme state. Omarchy 3.x kept it under ~/.config/omarchy/current, and
+// an upgraded system still resolves that path through a compatibility symlink,
+// but a clean 4.0 install does not create one — so this reads the canonical
+// location directly rather than depending on the symlink.
+func OmarchyStatePath(parts ...string) string {
+	return filepath.Join(append([]string{homeDir(), ".local/state/omarchy/current"}, parts...)...)
+}
+
 func ReadOmarchyFont() string {
-	cssFile := filepath.Join(homeDir(), ".config/omarchy/current/theme/hyprland-preview-share-picker.css")
+	cssFile := OmarchyStatePath("theme", "hyprland-preview-share-picker.css")
 	data, err := os.ReadFile(cssFile)
 	if err != nil {
 		log.Printf("warning: cannot read %s (%v); falling back to JetBrains Mono NF", cssFile, err)
@@ -85,7 +94,7 @@ func ReadOmarchyFont() string {
 }
 
 func readOmarchyThemeName() string {
-	nameFile := filepath.Join(homeDir(), ".config/omarchy/current/theme.name")
+	nameFile := OmarchyStatePath("theme.name")
 	data, err := os.ReadFile(nameFile)
 	if err != nil {
 		return ""
@@ -137,9 +146,10 @@ func blendHex(a, b string, t float64) string {
 
 // loadOmarchyColors loads the current active Omarchy palette.
 // The name parameter is kept for the omarchyTheme struct but the palette
-// is always read from ~/.config/omarchy/current/theme/colors.toml.
+// is always read from the active theme's colors.toml under the Omarchy state
+// directory.
 func loadOmarchyColors(name string) *ThemePalette {
-	path := filepath.Join(homeDir(), ".config/omarchy/current/theme/colors.toml")
+	path := OmarchyStatePath("theme", "colors.toml")
 	var raw map[string]string
 	if _, err := toml.DecodeFile(path, &raw); err != nil {
 		return nil

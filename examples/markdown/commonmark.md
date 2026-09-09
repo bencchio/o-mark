@@ -1,9 +1,10 @@
-# Test CommonMark — Spec Edge Cases
+# CommonMark — Basic and Advanced
 
-Validates pure CommonMark compliance (not GFM extensions — those are covered
-in `test-1.md`, `test-2.md`, `test-3.md` and `test-tables.md`). Each section
-notes what's expected; use it to spot differences between the spec and what
-goldmark actually renders.
+Validates pure CommonMark compliance (not GFM/Obsidian extensions — those are
+covered in `github.md` and `obsidian.md`; general extensions live in
+`../extensions/extensions.md`). Each section notes what's expected; use it to
+spot differences between the spec and what goldmark actually renders. No
+strikethrough here (`✕` in CommonMark) — see `github.md`/`obsidian.md`.
 
 ---
 

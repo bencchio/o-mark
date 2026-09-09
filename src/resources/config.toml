@@ -13,6 +13,10 @@ font_size_base = "default"
 # Muestra las barras de scroll nativas del navegador (WebEngineView).
 show_scrollbars = false
 
+# Muestra los números de línea en los bloques de código. Los bloques de una
+# sola línea nunca los llevan.
+code_line_numbers = true
+
 # Posición del toolbar: "top" | "bottom".
 toolbar_position = "bottom"
 

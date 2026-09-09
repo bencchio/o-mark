@@ -1,6 +1,8 @@
 # Math (KaTeX)
 
-Análisis matemático: series, integrales, probabilidad, álgebra lineal. Inline y block, incluye `\begin{aligned}` multi-línea.
+Mathematical analysis: series, integrals, probability, linear algebra.
+Inline and block, including multi-line `\begin{aligned}`, plus documented
+known issues below.
 
 ---
 
@@ -88,8 +90,17 @@ $$\int_{-\infty}^{\infty} |f(x)|^2\, dx = \int_{-\infty}^{\infty} |\hat{f}(\xi)|
 
 ## Multi-line Block Test
 
-> **Nota:** KaTeX ignora los saltos de línea literales dentro de `$$...$$`. Para expresiones
-> multi-línea se requiere `\begin{aligned}...\end{aligned}` con `\\` explícitos.
+> **Known issue:** KaTeX ignores literal line breaks inside `$$...$$`.
+> Multi-line expressions need explicit `\begin{aligned}...\end{aligned}` with
+> `\\` row separators — plain multi-line content still renders, but collapses
+> onto one line instead of aligning. This is a KaTeX limitation, not a parser
+> one: the block below reaches KaTeX exactly as written.
+>
+> Three former parser issues are fixed and covered by the regression sections
+> below: stray `$` in prose no longer opens inline math, multi-line `$$`
+> blocks convert inside any wrapper tag, and block content is now taken
+> verbatim, so `\\` survives and `^`/`~`/`==` inside a formula are no longer
+> mistaken for superscript, subscript or highlight markup.
 
 **Maxwell's equations** — four lines using `\begin{aligned}` with `\\` breaks:
 
@@ -111,6 +122,88 @@ e^{i\pi} + 1 &= \cos\pi + i\sin\pi + 1 \\
              &= 0
 \end{aligned}
 $$
+
+---
+
+## Regression — Stray dollars in prose
+
+Every dollar sign in this section must stay literal text — none of these
+lines should render as math:
+
+The service costs $5 and $10 for the premium tier.
+
+Our prices are $1, $2 and $3 depending on volume.
+
+In bash, `$HOME` expands, and prose mentions of $PATH or $variable names
+should not open a formula either.
+
+Spaced delimiters are rejected too, so $ x $ stays plain text, while proper
+inline math like $x^2 + 1$ still renders.
+
+---
+
+## Regression — Multi-line block inside wrappers
+
+A multi-line `$$` block must convert to a KaTeX block wherever it appears,
+not only as a bare paragraph.
+
+Plain paragraph, no `\begin{aligned}` (renders as one line — KaTeX
+limitation noted above):
+
+$$
+E = mc^2
+\quad
+p = mv
+$$
+
+Inside a blockquote:
+
+> The quadratic formula:
+>
+> $$
+> x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+> $$
+
+Inside a list item:
+
+- First item with a block:
+
+  $$
+  \sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+  $$
+
+- Second item, plain text.
+
+## Regression — Block content is verbatim
+
+A block whose formula contains `^`, `~`, `_` or `==` must reach KaTeX
+untouched — these used to be eaten by the superscript, subscript and
+highlight extensions before the block was parsed:
+
+$$
+f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(0)}{n!} x^n
+$$
+
+And `\\` must survive as a row separator, not collapse into a single
+backslash:
+
+$$
+\begin{aligned}
+a_1 &= b^2 \\
+c_1 &= d^2 \\
+e_1 &= f^2
+\end{aligned}
+$$
+
+---
+
+And a fenced code block containing `$$` lines must stay code, untouched:
+
+```
+$$
+this is code, not math
+$$
+```
 
 ---
 

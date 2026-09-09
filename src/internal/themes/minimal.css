@@ -103,3 +103,14 @@ pre.mermaid { background-color: #f0f0f0; border: none; border-radius: 4px; paddi
 .o-mark-frontmatter { border-left: 3px solid #e0e0e0; margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #1a1a1a; }
+
+:root {
+	--o-mark-hl-keyword: #333333;
+	--o-mark-hl-string: #4a6357;
+	--o-mark-hl-comment: #a0a0a0;
+	--o-mark-hl-number: #5a5a5a;
+	--o-mark-hl-title: #2a4a63;
+	--o-mark-hl-type: #63553a;
+	--o-mark-hl-builtin: #46605e;
+	--o-mark-hl-meta: #a0a0a0;
+}

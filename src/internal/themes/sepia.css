@@ -19,7 +19,7 @@ p:first-of-type { text-indent: 0; }
 li p, blockquote p { text-indent: 0; }
 h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p { text-indent: 0; }
 body > p:first-of-type:first-letter {
-	font-size: 3.5em;
+	font-size: 2.5em;
 	float: left;
 	line-height: 0.8;
 	margin-right: 4px;
@@ -126,3 +126,14 @@ pre.mermaid { background-color: #ede4d0; border: 1px solid #d4c4a8; border-radiu
 .o-mark-frontmatter { border-left: 3px solid #e0d0b8; margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #2c2c2c; }
+
+:root {
+	--o-mark-hl-keyword: #9c3d2e;
+	--o-mark-hl-string: #4a6b3a;
+	--o-mark-hl-comment: #9a8b72;
+	--o-mark-hl-number: #a86a2c;
+	--o-mark-hl-title: #43607d;
+	--o-mark-hl-type: #7a5c2e;
+	--o-mark-hl-builtin: #4f6b5e;
+	--o-mark-hl-meta: #9a8b72;
+}
