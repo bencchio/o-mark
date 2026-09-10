@@ -18,6 +18,9 @@
   var badgeTimer = null;
   var colorStyle = null;
 
+  var searchMatches = [];
+  var searchIndex = -1;
+
   // Containers whose text is never wrapped into navigable words: code
   // (fenced + inline), rendered math/diagrams, the line-number gutter, the
   // frontmatter block, task-list checkboxes, image fallbacks, and the nav
@@ -207,10 +210,20 @@
     var accent = themeVar('--o-mark-accent', '#58a6ff');
     var markBg = themeVar('--o-mark-nav-mark-bg', 'color-mix(in srgb, ' + accent + ' 25%, transparent)');
     var markFg = themeVar('--o-mark-nav-mark-fg', getComputedStyle(document.body).color);
+    var searchBg = themeVar('--o-mark-nav-search-bg', 'color-mix(in srgb, ' + accent + ' 35%, transparent)');
+    var searchCurrentBg = themeVar('--o-mark-nav-search-current-bg', accent);
+    var searchCurrentFg = themeVar('--o-mark-nav-search-current-fg', getComputedStyle(document.body).backgroundColor);
     colorStyle.textContent =
       '::selection, ::highlight(ow-mark) {' +
       'background-color: ' + markBg + ';' +
       'color: ' + markFg + ';' +
+      '}' +
+      '::highlight(ow-search) {' +
+      'background-color: ' + searchBg + ';' +
+      '}' +
+      '::highlight(ow-search-current) {' +
+      'background-color: ' + searchCurrentBg + ';' +
+      'color: ' + searchCurrentFg + ';' +
       '}';
   }
 
@@ -488,6 +501,116 @@
     }
   }
 
+  // Walks the same text nodes wrapWords() indexes (same EXCLUDED filter),
+  // in document order, so a search match can span word boundaries or land
+  // mid-word without needing a separate index from the one nav already
+  // maintains. Returns parallel arrays: one text node per entry, and that
+  // node's starting offset in the concatenation of all of them.
+  function collectSearchNodes() {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var nodes = [];
+    var starts = [];
+    var pos = 0;
+    var n;
+    while ((n = walker.nextNode())) {
+      if (!n.nodeValue) continue;
+      var parent = n.parentElement;
+      if (!parent) continue;
+      if (parent.matches(EXCLUDED) || parent.closest(EXCLUDED)) continue;
+      nodes.push(n);
+      starts.push(pos);
+      pos += n.nodeValue.length;
+    }
+    return { nodes: nodes, starts: starts };
+  }
+
+  // Binary search for the last start offset <= target; starts is sorted
+  // ascending because collectSearchNodes walks in document order.
+  function locateOffset(starts, target) {
+    var lo = 0, hi = starts.length - 1, ans = 0;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (starts[mid] <= target) { ans = mid; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return ans;
+  }
+
+  function findMatches(query, caseSensitive) {
+    var idx = collectSearchNodes();
+    var full = idx.nodes.map(function (n) { return n.nodeValue; }).join('');
+    var hay = caseSensitive ? full : full.toLowerCase();
+    var needle = caseSensitive ? query : query.toLowerCase();
+    var ranges = [];
+    if (!needle) return ranges;
+    var from = 0;
+    while (true) {
+      var found = hay.indexOf(needle, from);
+      if (found < 0) break;
+      var startNodeIdx = locateOffset(idx.starts, found);
+      var endNodeIdx = locateOffset(idx.starts, found + needle.length - 1);
+      var range = document.createRange();
+      range.setStart(idx.nodes[startNodeIdx], found - idx.starts[startNodeIdx]);
+      range.setEnd(idx.nodes[endNodeIdx], found + needle.length - idx.starts[endNodeIdx]);
+      ranges.push(range);
+      from = found + needle.length;
+    }
+    return ranges;
+  }
+
+  function paintSearch() {
+    if (!searchMatches.length) {
+      CSS.highlights.delete('ow-search');
+      CSS.highlights.delete('ow-search-current');
+      return;
+    }
+    CSS.highlights.set('ow-search', new Highlight(...searchMatches));
+    CSS.highlights.set('ow-search-current', new Highlight(searchMatches[searchIndex]));
+  }
+
+  function scrollRangeIntoView(range) {
+    var r = range.getBoundingClientRect();
+    var margin = 40;
+    if (r.top < margin) window.scrollBy(0, r.top - margin);
+    else if (r.bottom > window.innerHeight - margin) window.scrollBy(0, r.bottom - (window.innerHeight - margin));
+  }
+
+  function searchResult() {
+    return { count: searchMatches.length, current: searchMatches.length ? searchIndex + 1 : 0 };
+  }
+
+  function search(query, opts) {
+    opts = opts || {};
+    searchMatches = query ? findMatches(query, !!opts.caseSensitive) : [];
+    searchIndex = searchMatches.length ? 0 : -1;
+    paintSearch();
+    if (searchIndex >= 0) scrollRangeIntoView(searchMatches[searchIndex]);
+    return searchResult();
+  }
+
+  function searchStep(dir) {
+    if (!searchMatches.length) return searchResult();
+    searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
+    paintSearch();
+    scrollRangeIntoView(searchMatches[searchIndex]);
+    return searchResult();
+  }
+
+  function clearSearch() {
+    CSS.highlights.delete('ow-search');
+    CSS.highlights.delete('ow-search-current');
+    searchMatches = [];
+    searchIndex = -1;
+  }
+
+  // Prefill source for the search input: the word-marked range if active,
+  // otherwise a native mouse-drag selection — same priority copy() uses.
+  function selectionOrMarkedText() {
+    var range = marking ? markedNativeRange() : null;
+    if (range) return range.toString();
+    return selectedText() || '';
+  }
+
   function onKeydown(e) {
     if (!words.length) return;
     if (e.altKey) return;
@@ -591,7 +714,12 @@
     init: init,
     serialize: serialize,
     restore: restore,
-    copy: copy
+    copy: copy,
+    search: search,
+    searchNext: function () { return searchStep(1); },
+    searchPrev: function () { return searchStep(-1); },
+    clearSearch: clearSearch,
+    selectionOrMarkedText: selectionOrMarkedText
   };
 
   init();

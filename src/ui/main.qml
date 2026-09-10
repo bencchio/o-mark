@@ -34,11 +34,30 @@ Window {
 
     Component.onCompleted: viewer.requestFocus()
 
-    // Esc toggles toolbar visibility. If the ComboBox popup is open, close it instead.
+    // "/" opens search (vim/less-style — Ctrl+F would collide with the
+    // WebEngineView's own native find-in-page shortcut), prefilled from the
+    // word-marked range or native selection when there is one.
+    Shortcut {
+        sequence: "/"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            root.toolbarVisible = true
+            viewer.selectionOrMarkedText(function(text) { toolbar.openSearch(text) })
+        }
+    }
+
+    // Esc: closes an active search first, without touching toolbar
+    // visibility; otherwise closes the ComboBox popup if open; otherwise
+    // toggles toolbar visibility, same as before search existed.
     Shortcut {
         sequence: "Escape"
         context: Qt.ApplicationShortcut
         onActivated: {
+            if (toolbar.searchActive) {
+                toolbar.closeSearch()
+                viewer.requestFocus()
+                return
+            }
             if (toolbar.isPopupOpen) {
                 toolbar.closePopup()
                 return
@@ -68,6 +87,7 @@ Window {
             height: root.toolbarVisible ? parent.height - container._chrome : parent.height
             colors: colors
             viewerThemeIndex: root.viewerThemeIndex
+            onSearchResultsChanged: function(count, current) { toolbar.setSearchResult(count, current) }
         }
 
         Rectangle {
@@ -91,6 +111,10 @@ Window {
             zoomFactor: viewer.zoomFactor
             onViewerThemeChanged: function(index) { root.viewerThemeIndex = index }
             onResetZoomRequested: viewer.resetZoom()
+            onSearchRequested: function(query, caseSensitive) { viewer.searchDocument(query, caseSensitive) }
+            onSearchNextRequested: viewer.searchNext()
+            onSearchPrevRequested: viewer.searchPrev()
+            onSearchClosed: viewer.clearSearch()
         }
 
         Rectangle {

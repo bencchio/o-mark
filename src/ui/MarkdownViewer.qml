@@ -17,6 +17,41 @@ Item {
 
     function requestFocus() { webView.forceActiveFocus() }
 
+    signal searchResultsChanged(int count, int current)
+
+    function _applySearchResult(json) {
+        var r = {}
+        try { r = JSON.parse(json || "{}") } catch(e) {}
+        searchResultsChanged(r.count || 0, r.current || 0)
+    }
+
+    function searchDocument(query, caseSensitive) {
+        var q = JSON.stringify(query)
+        webView.runJavaScript(
+            "JSON.stringify(window.oMark.search(" + q + ", {caseSensitive: " + !!caseSensitive + "}))",
+            _applySearchResult)
+    }
+
+    function searchNext() {
+        webView.runJavaScript("JSON.stringify(window.oMark.searchNext())", _applySearchResult)
+    }
+
+    function searchPrev() {
+        webView.runJavaScript("JSON.stringify(window.oMark.searchPrev())", _applySearchResult)
+    }
+
+    function clearSearch() {
+        webView.runJavaScript("window.oMark.clearSearch()")
+    }
+
+    // Reads the current word-marked range or native selection to prefill the
+    // search input; callback receives a plain string (possibly empty).
+    function selectionOrMarkedText(callback) {
+        webView.runJavaScript(
+            "window.oMark ? window.oMark.selectionOrMarkedText() : ''",
+            function(text) { callback(text || "") })
+    }
+
     property real savedScrollY: 0
     property string savedNavState: ""
     property bool firstLoadComplete: false

@@ -35,6 +35,28 @@ clears any selection.
 Links to other `.md` files open in a new O'Mark window. This needs O'Mark
 registered as your markdown handler — see [INSTALL.md](../INSTALL.md).
 
+## Search
+
+| Action | Keyboard |
+|---|---|
+| Open search | `/` |
+| Next / previous match | `Enter` / `Shift+Enter` |
+| Toggle case-sensitive matching (`Aa`) | Click it, or `Tab` to it from the input and press `Enter`/`Space` |
+| Move focus between the input and `Aa` | `Tab` / `Shift+Tab` |
+| Close search | `Esc` |
+
+Opening search shows the toolbar if it was hidden. It prefills the input
+from the current word-marked range or mouse selection, if there is one.
+Matches are highlighted as you type; the counter next to the input shows
+your position ("3 / 12") or that there are no matches.
+
+`/` doesn't use `Ctrl+F` because the document view runs inside a web engine
+that reserves that shortcut for its own native find bar.
+
+Closing search with `Esc` only closes search — it returns focus to the
+document but leaves the toolbar exactly as it was. A second `Esc` (with
+search already closed) is the regular toolbar toggle described below.
+
 ## Zoom
 
 | Action | Keyboard | Mouse |
@@ -63,8 +85,8 @@ While the toolbar has focus, a coloured line between it and the document tells
 you that keys go to the toolbar rather than to the page. O'Mark remembers which
 control you were on the last time, so `Esc` brings you back to it.
 
-The toolbar holds two controls: the zoom reset button (`↺`) and the theme
-selector.
+The toolbar holds the search bar (see [Search](#search)), the zoom reset
+button (`↺`), and the theme selector.
 
 ### Moving around the toolbar
 
