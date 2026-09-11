@@ -14,6 +14,15 @@ CGO_CXXFLAGS="-Wno-sfinae-incomplete" go build -o target/o-mark .
 
 Requirements: Go 1.26+, Qt6 (`qt6-base`, `qt6-declarative`, `qt6-webengine`), CGO enabled.
 
+For a smaller binary to actually install, add `-ldflags="-s -w"`: it strips
+the symbol table and debug info, cutting the size by roughly a third. Keep
+a build without those flags around (or just rebuild from the same commit)
+if you ever need to symbolize a crash — see the `diagnose-crash` skill.
+
+```bash
+CGO_CXXFLAGS="-Wno-sfinae-incomplete" go build -ldflags="-s -w" -o target/o-mark .
+```
+
 ## 2. Install
 
 The binary is self-contained — QML files are embedded at compile time.

@@ -21,6 +21,22 @@ QML files, the default config, and the bundled JavaScript libraries (KaTeX,
 Mermaid, highlight.js) are all embedded at compile time, so the resulting
 binary is self-contained and works offline.
 
+### Release build
+
+Add `-ldflags="-s -w"` to strip the symbol table and DWARF debug info —
+roughly a third smaller, with no behavior change:
+
+```bash
+CGO_CXXFLAGS="-Wno-sfinae-incomplete" go build -ldflags="-s -w" -o target/o-mark .
+```
+
+Keep the default (unstripped) build for local development — stripping
+loses the ability to symbolize a crash. The Arch package
+(`packaging/arch/PKGBUILD`) doesn't use this flag directly: it builds with
+full debug info and relies on `options=('debug')` so `makepkg` splits it
+into a separate `o-mark-debug` package, stripping only the installed
+binary — see `diagnose-crash` when you need the symbols back.
+
 ## Run
 
 ```bash

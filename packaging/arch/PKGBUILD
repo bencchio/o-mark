@@ -6,6 +6,7 @@ pkgdesc="Minimalist markdown viewer"
 arch=('x86_64')
 url="https://github.com/bencchio/o-mark"
 license=('MIT')
+options=('debug')
 depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'omarchy-theme')
 makedepends=('go' 'gcc' 'pkgconf')
 
