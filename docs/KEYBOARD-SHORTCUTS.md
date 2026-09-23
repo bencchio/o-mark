@@ -35,6 +35,20 @@ clears any selection.
 Links to other `.md` files open in a new O'Mark window. This needs O'Mark
 registered as your markdown handler — see [INSTALL.md](../INSTALL.md).
 
+## Tables
+
+| Action | Keyboard | Mouse |
+|---|---|---|
+| Sort by a column | Hover the column header, press `s` | Click the column header |
+| Advance the sort (ascending → descending → off) | Press `s` again on the same header | Click the same header again |
+
+A badge confirms each step ("SORTED ↓ Column", "SORT CLEARED"), and an arrow
+on the header shows the active sort column and direction while it's on.
+Sorting a different column starts a fresh cycle on that column — only one
+column is sorted at a time. The third step returns the table to its original
+order. The sort is for the current session only: it isn't saved, and it never
+changes the source file.
+
 ## Search
 
 | Action | Keyboard |
@@ -50,8 +64,8 @@ from the current word-marked range or mouse selection, if there is one.
 Matches are highlighted as you type; the counter next to the input shows
 your position ("3 / 12") or that there are no matches.
 
-`/` doesn't use `Ctrl+F` because the document view runs inside a web engine
-that reserves that shortcut for its own native find bar.
+`/` is search. `Ctrl+F` does nothing — the web engine's native find bar is
+disabled.
 
 Closing search with `Esc` only closes search — it returns focus to the
 document but leaves the toolbar exactly as it was. A second `Esc` (with
@@ -66,6 +80,15 @@ search already closed) is the regular toolbar toggle described below.
 | Reset zoom to 100% | `Ctrl+0` | Click `↺` in the toolbar |
 
 The current zoom level is shown in the toolbar.
+
+## Export
+
+| Action | Keyboard | Mouse |
+|---|---|---|
+| Export PDF next to the open file | `Ctrl+P` | Click `PDF` in the toolbar |
+
+The PDF is written beside the markdown (`foo.md` → `foo.pdf`). If that file
+already exists, O'Mark does not overwrite it.
 
 ## Quitting
 
@@ -86,7 +109,7 @@ you that keys go to the toolbar rather than to the page. O'Mark remembers which
 control you were on the last time, so `Esc` brings you back to it.
 
 The toolbar holds the search bar (see [Search](#search)), the zoom reset
-button (`↺`), and the theme selector.
+button (`↺`), the PDF export control, and the theme selector.
 
 ### Moving around the toolbar
 

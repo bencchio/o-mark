@@ -501,6 +501,90 @@
     }
   }
 
+  // Table sort: click a <th>, or hover it and press 's', to sort its table
+  // by that column. One column at a time — sorting a different column
+  // replaces the previous criterion instead of accumulating. Cycles
+  // none -> asc -> desc -> none, the last step restoring the row order the
+  // table had before it was first sorted. Session-only: no state written to
+  // config.toml or back to the source document.
+  var hoveredTh = null;
+
+  function onTableMouseover(e) {
+    var th = e.target && e.target.closest && e.target.closest('th');
+    hoveredTh = (th && !th.closest(EXCLUDED)) ? th : null;
+  }
+
+  function isNumericText(s) {
+    return s !== '' && !isNaN(Number(s));
+  }
+
+  function sortTableByHeader(th) {
+    var table = th.closest('table');
+    if (!table) return;
+    var ths = Array.prototype.slice.call(th.parentElement.children)
+      .filter(function (el) { return el.tagName === 'TH'; });
+    var colIndex = ths.indexOf(th);
+    var tbody = table.tBodies[0];
+    if (colIndex < 0 || !tbody) return;
+
+    if (!table._owOriginalRows) {
+      table._owOriginalRows = Array.prototype.slice.call(tbody.rows);
+    }
+
+    var prev = table._owSort;
+    var dir;
+    if (prev && prev.colIndex === colIndex) {
+      dir = prev.dir === 'asc' ? 'desc' : (prev.dir === 'desc' ? null : 'asc');
+    } else {
+      dir = 'asc';
+    }
+
+    ths.forEach(function (h) { h.classList.remove('ow-sorted', 'ow-sorted-desc'); });
+
+    if (dir === null) {
+      table._owSort = null;
+      var restoreFrag = document.createDocumentFragment();
+      table._owOriginalRows.forEach(function (r) { restoreFrag.appendChild(r); });
+      tbody.appendChild(restoreFrag);
+      showBadge('SORT CLEARED', 1200);
+      return;
+    }
+
+    table._owSort = { colIndex: colIndex, dir: dir };
+
+    function cellText(row) {
+      var cell = row.cells[colIndex];
+      return cell ? cell.textContent.trim() : '';
+    }
+
+    var rows = Array.prototype.slice.call(tbody.rows);
+    var nonEmpty = rows.map(cellText).filter(function (t) { return t !== ''; });
+    var numeric = nonEmpty.length > 0 && nonEmpty.every(isNumericText);
+    var sign = dir === 'asc' ? 1 : -1;
+
+    rows.sort(function (a, b) {
+      var ta = cellText(a), tb = cellText(b);
+      if (ta === '' && tb === '') return 0;
+      if (ta === '') return 1;
+      if (tb === '') return -1;
+      var cmp = numeric ? (Number(ta) - Number(tb)) : ta.localeCompare(tb, 'es');
+      return cmp * sign;
+    });
+
+    var frag = document.createDocumentFragment();
+    rows.forEach(function (r) { frag.appendChild(r); });
+    tbody.appendChild(frag);
+
+    th.classList.add('ow-sorted');
+    if (dir === 'desc') th.classList.add('ow-sorted-desc');
+    showBadge('SORTED ' + (dir === 'asc' ? '↑' : '↓') + ' ' + th.textContent.trim(), 1200);
+  }
+
+  function onTableClick(e) {
+    var th = e.target && e.target.closest && e.target.closest('th');
+    if (th && !th.closest(EXCLUDED)) sortTableByHeader(th);
+  }
+
   // Walks the same text nodes wrapWords() indexes (same EXCLUDED filter),
   // in document order, so a search match can span word boundaries or land
   // mid-word without needing a separate index from the one nav already
@@ -633,6 +717,8 @@
       ctrl ? moveDocEdge(-1) : moveLineStart();
     } else if (key === 'End') {
       ctrl ? moveDocEdge(1) : moveLineEnd();
+    } else if ((key === 's' || key === 'S') && hoveredTh) {
+      sortTableByHeader(hoveredTh);
     } else {
       handled = false;
     }
@@ -709,6 +795,8 @@
 
   document.addEventListener('keydown', onKeydown);
   document.addEventListener('mousedown', onMousedown);
+  document.addEventListener('mouseover', onTableMouseover);
+  document.addEventListener('click', onTableClick);
 
   window.oMark = {
     init: init,

@@ -6,8 +6,8 @@
 |---|---|---|
 | Qt (Widgets, Quick, QuickControls2, QuickLayouts) | ≥ 6.5 | Builds the window chrome and hosts the WebEngine view |
 | Qt WebEngine (Quick) | ≥ 6.5 | Renders the document HTML (`MarkdownViewer.qml`) — plain Qt Quick is not enough. Ships Chromium ≥ 108, which the text navigation needs for the CSS Custom Highlight API (Chromium ≥ 105) that paints the marked range |
-| pkg-config | — | miqt uses it to locate the Qt6 modules (`.pc` files); o-mark also uses it for `omarchy-theme` |
-| omarchy-theme | 1.0.0-beta.2 (`libomarchy_theme.so.1`) | Resolves the active Omarchy color palette at runtime. Install from [bencchio/omarchy-theme](https://github.com/bencchio/omarchy-theme); the GitHub release tag `0.3.0` is how the library is installed, not the ABI number |
+| pkg-config | — | miqt uses it to locate the Qt6 modules (`.pc` files); o-mark also uses it for `omarchy-lib-theme` |
+| omarchy-lib-theme | 1.0.0-beta.2 (`libomarchy_lib_theme.so.1`) | Resolves the active Omarchy color palette at runtime. Install from [bencchio/omarchy-lib-theme](https://github.com/bencchio/omarchy-lib-theme); the GitHub release tag `0.3.0` is how the library is installed, not the ABI number |
 | CGO | — | Required by miqt |
 
 Supported distributions: Arch Linux (rolling — keep the system up to date with

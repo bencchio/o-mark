@@ -2,10 +2,10 @@ package main
 
 import (
 	"embed"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,27 +22,21 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.7.2"
+var version = "0.7.3"
 
-func paletteJSON(p internal.ThemePalette) string {
-	m := map[string]string{
-		"background":   p.Background,
-		"foreground":   p.Foreground,
-		"accent":       p.Accent,
-		"surface":      p.Surface,
-		"border":       p.Border,
-		"codeBg":       p.CodeBg,
-		"codeFg":       p.CodeFg,
-		"linkColor":    p.LinkColor,
-		"headingColor": p.HeadingColor,
-		"selectionBg":  p.SelectionBg,
-		"selectionFg":  p.SelectionFg,
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		log.Printf("main: cannot marshal palette: %v", err)
-	}
-	return string(b)
+// qtSink writes the session's output to QML context properties. It is the only
+// Qt-aware part of publication; the order the properties must land in lives in
+// internal.State.Publish.
+type qtSink struct{ ctx *qml.QQmlContext }
+
+func (q qtSink) SetString(key, value string) {
+	q.ctx.SetContextProperty2(key, qt.NewQVariant14(value))
+}
+func (q qtSink) SetInt(key string, value int) {
+	q.ctx.SetContextProperty2(key, qt.NewQVariant4(value))
+}
+func (q qtSink) SetBool(key string, value bool) {
+	q.ctx.SetContextProperty2(key, qt.NewQVariant8(value))
 }
 
 // extractUI extracts the embedded QML files to a temp directory and returns
@@ -74,42 +68,6 @@ func extractUI() (string, error) {
 	return dir, nil
 }
 
-// allThemes returns the full ordered theme list: system first, then disk themes.
-func allThemes(diskThemes []internal.ViewerTheme) []internal.ViewerTheme {
-	all := make([]internal.ViewerTheme, 0, 1+len(diskThemes))
-	all = append(all, internal.ViewerTheme{ID: "system", Label: "System"})
-	return append(all, diskThemes...)
-}
-
-// themeIndex returns the index of themeID in all, defaulting to 0.
-func themeIndex(all []internal.ViewerTheme, themeID string) int {
-	for i, t := range all {
-		if t.ID == themeID {
-			return i
-		}
-	}
-	return 0
-}
-
-// setContextProperties passes all Go state to QML via context properties.
-func setContextProperties(ctx *qml.QQmlContext, title, raw, docDir string, p internal.ThemePalette, diskThemes []internal.ViewerTheme, themesDir string, cfg internal.Config, initialIdx int, font string) {
-	ctx.SetContextProperty2("documentTitle", qt.NewQVariant14(title))
-	ctx.SetContextProperty2("docDir", qt.NewQVariant14(docDir))
-	ctx.SetContextProperty2("viewerThemesJson", qt.NewQVariant14(internal.RenderViewerThemesJSON(raw, p, docDir, diskThemes, themesDir, cfg, font)))
-	ctx.SetContextProperty2("viewerThemeLabelsJson", qt.NewQVariant14(internal.ViewerThemeLabelsJSON(allThemes(diskThemes))))
-	ctx.SetContextProperty2("omarchyPaletteJson", qt.NewQVariant14(paletteJSON(p)))
-	ctx.SetContextProperty2("omarchyFont", qt.NewQVariant14(font))
-	ctx.SetContextProperty2("initialViewerThemeIndex", qt.NewQVariant4(initialIdx))
-	ctx.SetContextProperty2("showScrollbars", qt.NewQVariant8(cfg.ShowScrollbars))
-	ctx.SetContextProperty2("toolbarPositionConfig", qt.NewQVariant14(cfg.ToolbarPosition))
-	ctx.SetContextProperty2("toolbarVisibleConfig", qt.NewQVariant8(*cfg.ToolbarVisible))
-	postLoad, err := json.Marshal(internal.PostLoadScripts(raw))
-	if err != nil {
-		log.Printf("main: cannot marshal post-load scripts: %v", err)
-	}
-	ctx.SetContextProperty2("postLoadScripts", qt.NewQVariant14(string(postLoad)))
-}
-
 // watchPath adds path to watcher, reporting the failure instead of leaving a
 // watcher that silently never fires. A dropped watch means live reloading stops
 // working with nothing on screen to say so.
@@ -119,44 +77,31 @@ func watchPath(watcher *qt.QFileSystemWatcher, path string) {
 	}
 }
 
-// startThemeWatcher follows the Omarchy theme (color, via libomarchy-theme)
-// and font (file, via inotify — the library is colors-only) and updates
-// context properties on change. cfg is a pointer so re-renders always use
-// the latest config values. A singleShot(0) fires on the first event loop
-// tick to self-correct a failed startup palette read without waiting for a
-// theme or file event.
-func startThemeWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, p internal.ThemePalette, diskThemes []internal.ViewerTheme, themesDir string, cfg *internal.Config, font string) {
-	currentP := p
-	currentFont := font
-
-	// omarchyWatcher stays nil when the library found no active theme to
-	// follow (e.g. Omarchy not running) — update falls back to
-	// GetThemePalette's own builtin fallback in that case.
-	omarchyWatcher, err := internal.NewOmarchyThemeWatcher()
-	if err != nil {
-		log.Printf("warning: cannot watch the Omarchy theme, colors will not update live: %v", err)
-	}
-
-	update := func() {
-		newP := internal.GetThemePalette("omarchy")
-		if omarchyWatcher != nil {
-			newP = omarchyWatcher.Palette()
-		}
-		newFont := internal.ReadOmarchyFont()
-		if newP == currentP && newFont == currentFont {
+// wirePdfExport connects the QML property map's `prepare` handshake to the
+// session's print render, so it reuses the live document and palette.
+func wirePdfExport(pm *qml.QQmlPropertyMap, sess *internal.Session) {
+	pm.Insert("path", qt.NewQVariant14(""))
+	pm.Insert("html", qt.NewQVariant14(""))
+	pm.Insert("exists", qt.NewQVariant8(false))
+	pm.OnValueChanged(func(key string, value *qt.QVariant) {
+		if key != "prepare" {
 			return
 		}
-		currentP = newP
-		currentFont = newFont
-		// Order is load-bearing. The first two feed pure QML bindings (chrome
-		// colors and font), which repaint on the next frame — unreachable while
-		// this function holds the GUI thread. viewerThemesJson is the only one
-		// with a side effect (onActiveHtmlChanged reloads the document), so it
-		// goes last, already rendered from the new palette and font. Publishing
-		// it first would reload the document against stale chrome.
-		ctx.SetContextProperty2("omarchyPaletteJson", qt.NewQVariant14(paletteJSON(newP)))
-		ctx.SetContextProperty2("omarchyFont", qt.NewQVariant14(newFont))
-		ctx.SetContextProperty2("viewerThemesJson", qt.NewQVariant14(internal.RenderViewerThemesJSON(*rawPtr, newP, docDir, diskThemes, themesDir, *cfg, newFont)))
+		prep := sess.PreparePdf()
+		pm.Insert("path", qt.NewQVariant14(prep.Path))
+		pm.Insert("html", qt.NewQVariant14(prep.HTML))
+		pm.Insert("exists", qt.NewQVariant8(prep.Exists))
+	})
+}
+
+// startThemeWatcher follows the Omarchy theme (color, via libomarchy-lib-theme)
+// and font (file, via inotify — the library is colors-only) and asks the
+// session to refresh. A singleShot(0) fires on the first event loop tick to
+// self-correct a failed startup palette read without waiting for a theme or
+// file event.
+func startThemeWatcher(sess *internal.Session, sink internal.StateSink, omarchyWatcher *internal.OmarchyThemeWatcher) {
+	update := func() {
+		sess.Apply(internal.ThemeChanged{}).Publish(sink)
 	}
 
 	initShot := qt.NewQTimer()
@@ -192,10 +137,10 @@ func startThemeWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, p in
 	})
 }
 
-// startConfigWatcher watches config.toml and the known theme CSS files.
-// On any change it reloads the config (preserving the session's viewer_theme),
-// then re-renders all themes so CSS changes take effect immediately.
-func startConfigWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, diskThemes []internal.ViewerTheme, themesDir string, cfg *internal.Config, font string) {
+// startConfigWatcher watches config.toml and the known theme CSS files and
+// asks the session to reload. The session preserves the active theme, so a
+// config edit does not change what the user is reading.
+func startConfigWatcher(sess *internal.Session, sink internal.StateSink, diskThemes []internal.ViewerTheme, themesDir string) {
 	watcher := qt.NewQFileSystemWatcher()
 	watchPath(watcher, filepath.Join(internal.ConfigDir(), "config.toml"))
 	for _, t := range diskThemes {
@@ -208,49 +153,20 @@ func startConfigWatcher(ctx *qml.QQmlContext, rawPtr *string, docDir string, dis
 	watcher.OnFileChanged(func(path string) {
 		// Re-add after inotify drops the watch on atomic-replace saves.
 		watchPath(watcher, path)
-		newCfg := internal.LoadConfig()
-		newCfg.ViewerTheme = cfg.ViewerTheme // session theme is not overridden by config edits
-		*cfg = newCfg
-		p := internal.GetThemePalette("omarchy")
-		ctx.SetContextProperty2("viewerThemesJson", qt.NewQVariant14(
-			internal.RenderViewerThemesJSON(*rawPtr, p, docDir, diskThemes, themesDir, *cfg, font),
-		))
-		ctx.SetContextProperty2("showScrollbars", qt.NewQVariant8(newCfg.ShowScrollbars))
-		ctx.SetContextProperty2("toolbarPositionConfig", qt.NewQVariant14(newCfg.ToolbarPosition))
-		ctx.SetContextProperty2("toolbarVisibleConfig", qt.NewQVariant8(*newCfg.ToolbarVisible))
+		sess.Apply(internal.ConfigChanged{}).Publish(sink)
 	})
 }
 
-// startDocWatcher watches the open document for changes and re-renders on each save.
-// rawPtr is updated in-place so subsequent theme/config watcher fires use the new content.
-func startDocWatcher(ctx *qml.QQmlContext, absPath, docDir string, diskThemes []internal.ViewerTheme, themesDir string, cfg *internal.Config, rawPtr *string, reloadCount *int) {
-	reload := func() {
-		newRaw, err := internal.LoadFile(absPath)
-		if err != nil {
-			log.Printf("doc watcher: cannot re-read %s: %v", absPath, err)
-			return
-		}
-		*rawPtr = newRaw
-		p := internal.GetThemePalette("omarchy")
-		font := internal.ReadOmarchyFont()
-		ctx.SetContextProperty2("viewerThemesJson", qt.NewQVariant14(
-			internal.RenderViewerThemesJSON(*rawPtr, p, docDir, diskThemes, themesDir, *cfg, font),
-		))
-		postLoad, err := json.Marshal(internal.PostLoadScripts(*rawPtr))
-		if err != nil {
-			log.Printf("doc watcher: cannot marshal post-load scripts: %v", err)
-		}
-		ctx.SetContextProperty2("postLoadScripts", qt.NewQVariant14(string(postLoad)))
-		*reloadCount++
-		ctx.SetContextProperty2("docReloadSignal", qt.NewQVariant4(*reloadCount))
-	}
-
-	// 100 ms delay handles atomic saves (delete+rename pattern) and debounces
-	// rapid consecutive writes.
+// startDocWatcher watches the open document and asks the session to reload it.
+// The 100 ms delay handles atomic saves (delete+rename pattern) and debounces
+// rapid consecutive writes.
+func startDocWatcher(sess *internal.Session, sink internal.StateSink, absPath string) {
 	debounce := qt.NewQTimer()
 	debounce.SetSingleShot(true)
 	debounce.SetInterval(100)
-	debounce.OnTimeout(reload)
+	debounce.OnTimeout(func() {
+		sess.Apply(internal.DocumentSaved{}).Publish(sink)
+	})
 
 	watcher := qt.NewQFileSystemWatcher()
 	watchPath(watcher, absPath)
@@ -273,6 +189,28 @@ func extractFontFamily(css string) string {
 	return ""
 }
 
+// resolveDocArg accepts either a bare local path (direct CLI use, e.g.
+// "o-mark file.md") or a URI: "file://..." from a file manager, or the
+// "o-mark:" scheme cross-document links use to reach a fresh instance
+// through the desktop's %u handoff. Only URI-prefixed input goes through
+// url.Parse, so a bare filename containing a literal '#' is never
+// misread as carrying a fragment.
+func resolveDocArg(arg string) (path, anchor string) {
+	if strings.HasPrefix(arg, "file://") || strings.HasPrefix(arg, "o-mark:") {
+		if u, err := url.Parse(arg); err == nil {
+			p := u.Path
+			if p == "" {
+				p = u.Opaque
+			}
+			if decoded, derr := url.PathUnescape(p); derr == nil {
+				p = decoded
+			}
+			return p, u.Fragment
+		}
+	}
+	return arg, ""
+}
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Println("o-mark", version)
@@ -283,19 +221,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	absPath, err := filepath.Abs(os.Args[1])
+	docArg, initialAnchor := resolveDocArg(os.Args[1])
+
+	absPath, err := filepath.Abs(docArg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	raw, err := internal.LoadFile(absPath)
-	if err != nil {
+	// Fail before the GUI starts when the document cannot be read; the session
+	// reads it again once Qt is up.
+	if _, err := internal.LoadFile(absPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	docDir := filepath.Dir(absPath)
 
-	displayPath := os.Args[1]
+	displayPath := docArg
 
 	internal.EnsureConfig(defaultConfigTOML)
 	cfg := internal.LoadConfig()
@@ -311,10 +252,6 @@ func main() {
 			internal.VerifyFontStack(font, t.Label)
 		}
 	}
-
-	all := allThemes(diskThemes)
-	initialIdx := themeIndex(all, cfg.ViewerTheme)
-	omarchyFont := internal.ReadOmarchyFont()
 
 	qmlDir, err := extractUI()
 	if err != nil {
@@ -335,25 +272,48 @@ func main() {
 
 	engine := qml.NewQQmlApplicationEngine()
 	ctx := engine.RootContext()
-	omarchyP := internal.GetThemePalette("omarchy")
-	setContextProperties(ctx, displayPath, raw, docDir, omarchyP, diskThemes, themesDir, cfg, initialIdx, omarchyFont)
-	ctx.SetContextProperty2("docReloadSignal", qt.NewQVariant4(0))
+
+	var omarchyWatcher *internal.OmarchyThemeWatcher
+	var paletteSrc internal.PaletteSource
+	if w, err := internal.NewOmarchyThemeWatcher(); err != nil {
+		log.Printf("warning: cannot watch the Omarchy theme, colors will not update live: %v", err)
+	} else {
+		omarchyWatcher = w
+		paletteSrc = w // a typed nil would defeat the session's fallback check
+	}
+
+	sess, state, err := internal.StartSession(internal.SessionOptions{
+		AbsPath:    absPath,
+		DocDir:     docDir,
+		Title:      displayPath,
+		Anchor:     initialAnchor,
+		Config:     cfg,
+		ThemesDir:  themesDir,
+		DiskThemes: diskThemes,
+		Palette:    paletteSrc,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	sink := qtSink{ctx}
+	state.Publish(sink)
+
+	pdfExport := qml.NewQQmlPropertyMap()
+	wirePdfExport(pdfExport, sess)
+	ctx.SetContextProperty("pdfExport", pdfExport.QObject)
 	engine.Load(qt.QUrl_FromLocalFile(filepath.Join(qmlDir, "main.qml")))
-	reloadCount := 0
-	startThemeWatcher(ctx, &raw, docDir, omarchyP, diskThemes, themesDir, &cfg, omarchyFont)
-	startConfigWatcher(ctx, &raw, docDir, diskThemes, themesDir, &cfg, omarchyFont)
-	startDocWatcher(ctx, absPath, docDir, diskThemes, themesDir, &cfg, &raw, &reloadCount)
+	startThemeWatcher(sess, sink, omarchyWatcher)
+	startConfigWatcher(sess, sink, diskThemes, themesDir)
+	startDocWatcher(sess, sink, absPath)
 
 	qt.QApplication_Exec()
 
-	// Save the active theme to config on exit.
+	// Save the active theme and toolbar visibility to config on exit.
 	if roots := engine.RootObjects(); len(roots) > 0 {
-		idx := roots[0].Property("viewerThemeIndex").ToInt()
-		if idx >= 0 && idx < len(all) {
-			cfg.ViewerTheme = all[idx].ID
-			v := roots[0].Property("toolbarVisible").ToBool()
-			cfg.ToolbarVisible = &v
-		}
+		sess.Apply(internal.Persist{
+			ViewerThemeIndex: roots[0].Property("viewerThemeIndex").ToInt(),
+			ToolbarVisible:   roots[0].Property("toolbarVisible").ToBool(),
+		})
 	}
-	internal.SaveConfig(cfg)
 }

@@ -260,16 +260,17 @@ EOF
 [Desktop Entry]
 Name=O'Mark
 Comment=Minimal Markdown Viewer
-Exec=$BIN_PATH %f
+Exec=$BIN_PATH %u
 Icon=text-x-markdown
 Type=Application
-MimeType=text/markdown;text/x-markdown;
+MimeType=text/markdown;text/x-markdown;x-scheme-handler/o-mark;
 Categories=Utility;
 EOF
     ok "Created $DESKTOP_FILE"
 
     xdg-mime default o-mark.desktop text/markdown
     xdg-mime default o-mark.desktop text/x-markdown
+    xdg-mime default o-mark.desktop x-scheme-handler/o-mark
     update-desktop-database "$HOME/.local/share/applications/"
     ok "Registered as default handler"
 

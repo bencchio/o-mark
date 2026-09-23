@@ -27,6 +27,22 @@ Press `Space` at a word to set an anchor and extend a range; `Super+C` copies
 the marked text. A mouse drag selects normally. See
 [docs/KEYBOARD-SHORTCUTS.md](KEYBOARD-SHORTCUTS.md) for the full list.
 
+## Page separators
+
+A line with only `---`, `***` or `___` starts a new page instead of drawing a
+horizontal rule: the document renders as separate pages, marked by a gap on
+screen, and each page prints (or exports to PDF) on its own physical page. A
+separator inside a fenced code block or a Mermaid diagram is left alone — it
+never splits the page. A document with no such line keeps rendering as one
+continuous document, unchanged. There is no keyboard navigation between
+pages: it stays a continuous document with marked pages, not a slide viewer.
+
+## Export to PDF
+
+`Ctrl+P` (or the `PDF` control in the toolbar) writes a print-colored PDF
+next to the open file (`document.md` → `document.pdf`). If that PDF already
+exists, it is left alone. The toolbar is hidden for the capture.
+
 ## Zoom
 
 `Ctrl++` / `Ctrl+-` zoom in and out, `Ctrl+0` resets to the default. The
@@ -35,8 +51,8 @@ toolbar shows the current zoom percentage.
 ## Toolbar and themes
 
 `Esc` toggles the toolbar; `T` / `Z` jump to its controls. The toolbar holds
-the theme selector, the zoom indicator and the current file name. Themes and
-their customization live in [docs/THEMES.md](THEMES.md).
+the theme selector, the zoom indicator, PDF export and the current file name.
+Themes and their customization live in [docs/THEMES.md](THEMES.md).
 
 ## Live reload
 

@@ -7,7 +7,7 @@ arch=('x86_64')
 url="https://github.com/bencchio/o-mark"
 license=('MIT')
 options=('debug')
-depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'omarchy-theme')
+depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'omarchy-lib-theme')
 makedepends=('go' 'gcc' 'pkgconf')
 
 _root="$(cd "${startdir}/../.." && pwd)"

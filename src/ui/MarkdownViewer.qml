@@ -55,6 +55,17 @@ Item {
     property real savedScrollY: 0
     property string savedNavState: ""
     property bool firstLoadComplete: false
+    property bool _pdfCapture: false
+    property string _pdfPath: ""
+
+    signal pdfFinished(bool success)
+
+    function exportPdf(path, html) {
+        if (_pdfCapture || !path || !html) return
+        _pdfCapture = true
+        _pdfPath = path
+        webView.loadHtml(html, "o-mark://document")
+    }
 
     Shortcut {
         sequences: [StandardKey.ZoomIn, "Ctrl+="]
@@ -73,9 +84,11 @@ Item {
     // reload or theme/palette change). On the initial load firstLoadComplete is
     // false, so we skip the JS round-trip.
     onActiveHtmlChanged: {
+        if (_pdfCapture) return
         if (!activeHtml) return
         if (!firstLoadComplete) {
-            webView.loadHtml(activeHtml, "o-mark://document")
+            var baseUrl = initialAnchor ? ("o-mark://document#" + initialAnchor) : "o-mark://document"
+            webView.loadHtml(activeHtml, baseUrl)
             return
         }
         webView.runJavaScript(
@@ -98,17 +111,29 @@ Item {
         onLoadingChanged: function(loadRequest) {
             if (loadRequest.status !== WebEngineView.LoadSucceededStatus) return
             firstLoadComplete = true
-            if (savedScrollY > 0)
-                webView.runJavaScript("window.scrollTo(0, " + savedScrollY + ")")
             var scripts; try { scripts = JSON.parse(postLoadScripts) } catch(e) { scripts = [] }
             for (var i = 0; i < scripts.length; i++)
                 webView.runJavaScript(scripts[i])
+            if (_pdfCapture) {
+                webView.printToPdf(_pdfPath)
+                return
+            }
+            if (savedScrollY > 0)
+                webView.runJavaScript("window.scrollTo(0, " + savedScrollY + ")")
             // Restore the navigation cursor (and marking selection, if any)
             // after the post-load scripts rebuild the word list. Scroll wins
             // over cursor: the active word stays logical and auto-scroll brings
             // it into view on the next navigation move.
             if (savedNavState)
                 webView.runJavaScript("window.oMark && window.oMark.restore(" + savedNavState + ")")
+        }
+
+        onPdfPrintingFinished: function(filePath, success) {
+            _pdfCapture = false
+            _pdfPath = ""
+            if (viewer.activeHtml)
+                webView.loadHtml(viewer.activeHtml, "o-mark://document")
+            viewer.pdfFinished(success)
         }
 
         onNavigationRequested: function(request) {
@@ -125,11 +150,16 @@ Item {
                 Qt.openUrlExternally(request.url)
                 return
             }
-            // Relative .md links resolve to o-mark://document/path — open in a new O'Mark instance.
+            // Relative .md links resolve to o-mark://document/path — open in a new
+            // O'Mark instance, through the dedicated o-mark: scheme so the desktop
+            // handoff (%u) carries the anchor instead of dropping it (see INSTALL.md).
             if (url.startsWith("o-mark://document/")) {
+                var rest = url.slice("o-mark://document/".length)
+                var hashIdx = rest.indexOf('#')
+                var linkAnchor = hashIdx >= 0 ? rest.slice(hashIdx + 1) : ""
                 var relPath
                 try {
-                    relPath = decodeURIComponent(url.slice("o-mark://document/".length).split("#")[0])
+                    relPath = decodeURIComponent(hashIdx >= 0 ? rest.slice(0, hashIdx) : rest)
                 } catch(e) {
                     request.reject()
                     return
@@ -138,8 +168,11 @@ Item {
                     request.reject()
                     return
                 }
-                if (relPath.toLowerCase().endsWith(".md"))
-                    Qt.openUrlExternally("file://" + docDir + "/" + relPath)
+                if (relPath.toLowerCase().endsWith(".md")) {
+                    var target = "o-mark://" + docDir + "/" + relPath
+                    if (linkAnchor) target += "#" + linkAnchor
+                    Qt.openUrlExternally(target)
+                }
                 request.reject()
                 return
             }

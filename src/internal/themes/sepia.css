@@ -83,7 +83,10 @@ blockquote {
 hr { border: none; border-top: 1px solid #d4c4a8; margin: 8mm 0; }
 table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #e0d0b8; padding: 8px 13px; text-align: left; }
-th { background-color: #ede4d0; font-weight: bold; color: #3d2b1f; }
+th { background-color: #ede4d0; font-weight: bold; color: #3d2b1f; cursor: pointer; position: relative; }
+th:hover { background-color: #e0d0b8; }
+th.ow-sorted::after { content: ''; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-bottom-color: #8b5a2b; }
+th.ow-sorted.ow-sorted-desc::after { border-bottom-color: transparent; border-top-color: #8b5a2b; }
 tbody tr:nth-child(even) td { background-color: #f5ecdc; }
 dt { font-weight: bold; color: #3d2b1f; }
 dd { margin-left: 6mm; margin-bottom: 4px; }
@@ -126,6 +129,14 @@ pre.mermaid { background-color: #ede4d0; border: 1px solid #d4c4a8; border-radiu
 .o-mark-frontmatter { border-left: 3px solid #e0d0b8; margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: #2c2c2c; }
+.o-mark-page { min-height: 297mm; box-sizing: border-box; }
+.o-mark-page > *:first-child { margin-top: 0; }
+.o-mark-page-gap { height: 3mm; margin: 6mm 0; background-color: #decfb6; }
+@media print {
+	.o-mark-page { min-height: 0; break-after: page; }
+	.o-mark-page:last-child { break-after: avoid; }
+	.o-mark-page-gap { display: none; }
+}
 
 :root {
 	--o-mark-nav-mark-bg: rgba(212, 184, 136, 0.55);

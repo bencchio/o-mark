@@ -1,7 +1,7 @@
 # Installing O'Mark
 
 On Arch, prefer [README.md § Install](README.md): install
-[omarchy-theme](https://github.com/bencchio/omarchy-theme), then either
+[omarchy-lib-theme](https://github.com/bencchio/omarchy-lib-theme), then either
 `pacman -U` the 0.7.0 release package or `git checkout 0.7.0` and
 `makepkg -si`. This page is the copy-to-prefix path.
 
@@ -79,15 +79,22 @@ update-mime-database ~/.local/share/mime/
 The `.desktop` file tells the system how to launch O'Mark from a file manager
 or via `xdg-open`.
 
+`%u` (not `%f`) so a link between O'Mark documents can carry the target
+heading as a URL fragment — `%f` is a local-path field code with no defined
+fragment handling, `%u` is the one that passes the full URI through.
+`x-scheme-handler/o-mark` is a scheme only O'Mark ever claims, used only to
+reach a fresh instance from a link in another O'Mark document — it still only
+ever opens `.md` files, the same as `text/markdown`.
+
 ```bash
 cat > ~/.local/share/applications/o-mark.desktop << 'EOF'
 [Desktop Entry]
 Name=O'Mark
 Comment=Minimal Markdown Viewer
-Exec=o-mark %f
+Exec=o-mark %u
 Icon=text-x-markdown
 Type=Application
-MimeType=text/markdown;text/x-markdown;
+MimeType=text/markdown;text/x-markdown;x-scheme-handler/o-mark;
 Categories=Utility;
 EOF
 ```
@@ -97,6 +104,7 @@ EOF
 ```bash
 xdg-mime default o-mark.desktop text/markdown
 xdg-mime default o-mark.desktop text/x-markdown
+xdg-mime default o-mark.desktop x-scheme-handler/o-mark
 update-desktop-database ~/.local/share/applications/
 ```
 
@@ -105,11 +113,16 @@ update-desktop-database ~/.local/share/applications/
 ```bash
 xdg-mime query filetype /path/to/file.md  # must print text/markdown, not text/plain
 xdg-mime query default text/markdown      # must print o-mark.desktop
+xdg-mime query default x-scheme-handler/o-mark  # must print o-mark.desktop
 ```
 
 If step 1 was skipped and the first command returns `text/plain`, the handler
 registered in step 3 will never be used — `xdg-open` resolves by detected type,
 not by file extension.
+
+`%u` applies to every launch, not just links between documents: opening a
+file from a file manager or via plain `o-mark file.md` still works, since
+`o-mark` accepts either a bare local path or a URI on its command line.
 
 To revert to a previous default:
 

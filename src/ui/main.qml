@@ -31,6 +31,30 @@ Window {
     }
 
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
+    Shortcut { sequences: [StandardKey.Find]; context: Qt.ApplicationShortcut; onActivated: {} }
+    Shortcut {
+        sequence: StandardKey.Print
+        context: Qt.ApplicationShortcut
+        onActivated: exportPdf()
+    }
+
+    property bool _toolbarBeforePdf: false
+
+    function exportPdf() {
+        if (viewer._pdfCapture) return
+        pdfExport.prepare = !pdfExport.prepare
+        if (pdfExport.exists) {
+            reloadBadge.show("PDF EXISTS")
+            return
+        }
+        if (!pdfExport.path || !pdfExport.html) {
+            reloadBadge.show("PDF FAILED")
+            return
+        }
+        _toolbarBeforePdf = root.toolbarVisible
+        root.toolbarVisible = false
+        viewer.exportPdf(pdfExport.path, pdfExport.html)
+    }
 
     Component.onCompleted: viewer.requestFocus()
 
@@ -88,6 +112,10 @@ Window {
             colors: colors
             viewerThemeIndex: root.viewerThemeIndex
             onSearchResultsChanged: function(count, current) { toolbar.setSearchResult(count, current) }
+            onPdfFinished: function(success) {
+                root.toolbarVisible = root._toolbarBeforePdf
+                reloadBadge.show(success ? "SAVED" : "PDF FAILED")
+            }
         }
 
         Rectangle {
@@ -115,6 +143,7 @@ Window {
             onSearchNextRequested: viewer.searchNext()
             onSearchPrevRequested: viewer.searchPrev()
             onSearchClosed: viewer.clearSearch()
+            onPdfExportRequested: exportPdf()
         }
 
         Rectangle {
@@ -142,7 +171,8 @@ Window {
                 font.pixelSize: 12
             }
 
-            function show() {
+            function show(text) {
+                reloadLabel.text = text || "Reloaded"
                 opacity = 1
                 hideTimer.restart()
             }

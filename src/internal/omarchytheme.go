@@ -1,9 +1,9 @@
 package internal
 
 /*
-#cgo pkg-config: omarchy-theme
+#cgo pkg-config: omarchy-lib-theme
 #include <stdlib.h>
-#include "omarchy_theme.h"
+#include "omarchy_lib_theme.h"
 */
 import "C"
 
@@ -14,12 +14,12 @@ import (
 	"unsafe"
 )
 
-// omarchyRGB mirrors OmarchyColor: one byte per channel.
+// omarchyRGB mirrors OmarchyLibThemeColor: one byte per channel.
 type omarchyRGB struct {
 	R, G, B uint8
 }
 
-// omarchyRole mirrors OmarchyRole: a role's own color plus the three content
+// omarchyRole mirrors OmarchyLibThemeRole: a role's own color plus the three content
 // weights that read on it.
 type omarchyRole struct {
 	Color            omarchyRGB
@@ -28,15 +28,15 @@ type omarchyRole struct {
 	ContentDisabled  omarchyRGB
 }
 
-// omarchyShade mirrors OmarchyShade: one shade and the content that reads on it.
+// omarchyShade mirrors OmarchyLibThemeShade: one shade and the content that reads on it.
 type omarchyShade struct {
 	Color   omarchyRGB
 	Content omarchyRGB
 }
 
-// omarchyColorFamily mirrors OmarchyColorFamily: a theme color as its
-// original/dark/bright triad. Declared is false for orange and brown when
-// the theme omits them.
+// omarchyColorFamily mirrors OmarchyLibThemeColorFamily: a theme color as its
+// original/dark/bright triad. Declared is false when the theme omits the
+// color.
 type omarchyColorFamily struct {
 	Original omarchyShade
 	Dark     omarchyShade
@@ -44,16 +44,19 @@ type omarchyColorFamily struct {
 	Declared bool
 }
 
-// omarchyRoleCount and omarchyColorCount mirror OMARCHY_ROLE_COUNT and
-// OMARCHY_COLOR_COUNT — read from the header's own macros instead of
+// omarchyRoleCount and omarchyColorCount mirror OMARCHY_LIB_THEME_ROLE_COUNT and
+// OMARCHY_LIB_THEME_COLOR_COUNT — read from the header's own macros instead of
 // hardcoding them, so a library update that grows either array is caught by
 // a length mismatch instead of silently truncating.
 const (
-	omarchyRoleCount  = C.OMARCHY_ROLE_COUNT
-	omarchyColorCount = C.OMARCHY_COLOR_COUNT
+	omarchyRoleCount  = C.OMARCHY_LIB_THEME_ROLE_COUNT
+	omarchyColorCount = C.OMARCHY_LIB_THEME_COLOR_COUNT
+	// omarchy_lib_theme.h names treatments in this order: Original,
+	// Inverted, HighContrast, Mono, Print.
+	printTreatment = 4
 )
 
-// omarchySnapshot mirrors OmarchySnapshot: every role resolved against the
+// omarchySnapshot mirrors OmarchyLibThemeSnapshot: every role resolved against the
 // theme in force, every color the theme declares, and whether it sits on a
 // dark ground.
 type omarchySnapshot struct {
@@ -62,15 +65,15 @@ type omarchySnapshot struct {
 	Dark   bool
 }
 
-func fromCColor(c C.OmarchyColor) omarchyRGB {
+func fromCColor(c C.OmarchyLibThemeColor) omarchyRGB {
 	return omarchyRGB{R: uint8(c.r), G: uint8(c.g), B: uint8(c.b)}
 }
 
-func fromCShade(c C.OmarchyShade) omarchyShade {
+func fromCShade(c C.OmarchyLibThemeShade) omarchyShade {
 	return omarchyShade{Color: fromCColor(c.color), Content: fromCColor(c.content)}
 }
 
-func fromCSnapshot(c *C.OmarchySnapshot) omarchySnapshot {
+func fromCSnapshot(c *C.OmarchyLibThemeSnapshot) omarchySnapshot {
 	var s omarchySnapshot
 	for i := range s.Roles {
 		r := c.roles[i]
@@ -94,11 +97,11 @@ func fromCSnapshot(c *C.OmarchySnapshot) omarchySnapshot {
 	return s
 }
 
-// omarchyWatcher wraps an OmarchyWatcher handle. Never copy by value — free
+// omarchyWatcher wraps an OmarchyLibThemeWatcher handle. Never copy by value — free
 // exactly once via close(), never concurrently with another call on the
 // same watcher (BRIDGE.md § Thread safety).
 type omarchyWatcher struct {
-	ptr *C.OmarchyWatcher
+	ptr *C.OmarchyLibThemeWatcher
 }
 
 // newOmarchyWatcher starts watching a theme: path a colors.toml, or "" for
@@ -111,7 +114,7 @@ func newOmarchyWatcher(path string) (*omarchyWatcher, error) {
 	}
 
 	errBuf := make([]C.char, 256)
-	ptr := C.omarchy_watch(cPath, &errBuf[0], C.size_t(len(errBuf)))
+	ptr := C.omarchy_lib_theme_watch(cPath, &errBuf[0], C.size_t(len(errBuf)))
 	if ptr == nil {
 		return nil, errors.New(C.GoString(&errBuf[0]))
 	}
@@ -119,18 +122,18 @@ func newOmarchyWatcher(path string) (*omarchyWatcher, error) {
 }
 
 // current writes the theme currently in force, through the given
-// representation (an out-of-range index falls back to Original).
-func (w *omarchyWatcher) current(representation int) omarchySnapshot {
-	var out C.OmarchySnapshot
-	C.omarchy_current(w.ptr, C.size_t(representation), &out)
+// treatment (an out-of-range index falls back to Original).
+func (w *omarchyWatcher) current(treatment int) omarchySnapshot {
+	var out C.OmarchyLibThemeSnapshot
+	C.omarchy_lib_theme_current(w.ptr, C.size_t(treatment), &out)
 	return fromCSnapshot(&out)
 }
 
 // pollChanged reports whether a new theme arrived since the last call,
-// through the given representation.
-func (w *omarchyWatcher) pollChanged(representation int) (omarchySnapshot, bool) {
-	var out C.OmarchySnapshot
-	if !bool(C.omarchy_poll_changed(w.ptr, C.size_t(representation), &out)) {
+// through the given treatment.
+func (w *omarchyWatcher) pollChanged(treatment int) (omarchySnapshot, bool) {
+	var out C.OmarchyLibThemeSnapshot
+	if !bool(C.omarchy_lib_theme_poll_changed(w.ptr, C.size_t(treatment), &out)) {
 		return omarchySnapshot{}, false
 	}
 	return fromCSnapshot(&out), true
@@ -141,18 +144,18 @@ func (w *omarchyWatcher) pollChanged(representation int) (omarchySnapshot, bool)
 // polling on a timer. Reading it never blocks; draining it fully before the
 // next wait is the caller's job.
 func (w *omarchyWatcher) signalFD() int {
-	return int(C.omarchy_signal_fd(w.ptr))
+	return int(C.omarchy_lib_theme_signal_fd(w.ptr))
 }
 
 // close stops watching and releases the handle. A no-op on an already-closed
 // watcher's nil ptr never happens here — callers own exactly one close.
 func (w *omarchyWatcher) close() {
-	C.omarchy_free(w.ptr)
+	C.omarchy_lib_theme_free(w.ptr)
 	w.ptr = nil
 }
 
 // roleIndexes caches where each role ThemePalette needs sits in
-// OmarchySnapshot.Roles. Resolved by name, not by a hardcoded position:
+// OmarchyLibThemeSnapshot.Roles. Resolved by name, not by a hardcoded position:
 // BRIDGE.md § Versioning warns the layout — including role order — may
 // change between betas without the SONAME moving.
 type roleIndexes struct {
@@ -175,7 +178,7 @@ func resolvedRoleIndexes() (roleIndexes, error) {
 			"Selection":  &roleIdx.selection,
 		}
 		for i := 0; i < omarchyRoleCount; i++ {
-			name := C.GoString(C.omarchy_role_name(C.size_t(i)))
+			name := C.GoString(C.omarchy_lib_theme_role_name(C.size_t(i)))
 			if dst, ok := want[name]; ok {
 				*dst = i
 				delete(want, name)
@@ -221,7 +224,7 @@ func paletteFromSnapshot(s omarchySnapshot, idx roleIndexes) ThemePalette {
 	}
 }
 
-// paletteFromOmarchy reads the active theme through libomarchy_theme and
+// paletteFromOmarchy reads the active theme through libomarchy_lib_theme and
 // maps it onto ThemePalette. ok is false when the library could not resolve
 // a theme (no watcher) or this library version dropped a role o-mark needs —
 // callers fall back to the built-in palette either way.
@@ -235,7 +238,7 @@ func paletteFromOmarchy() (palette ThemePalette, ok bool) {
 }
 
 // OmarchyThemeWatcher follows the active Omarchy theme through
-// libomarchy_theme for the life of the process, resolving it directly to
+// libomarchy_lib_theme for the life of the process, resolving it directly to
 // ThemePalette instead of the raw snapshot — callers never touch role
 // indexes or C types.
 type OmarchyThemeWatcher struct {
@@ -261,6 +264,11 @@ func NewOmarchyThemeWatcher() (*OmarchyThemeWatcher, error) {
 // Palette reads the theme currently in force.
 func (t *OmarchyThemeWatcher) Palette() ThemePalette {
 	return paletteFromSnapshot(t.w.current(0), t.idx)
+}
+
+// PrintPalette reads the theme through the Print treatment.
+func (t *OmarchyThemeWatcher) PrintPalette() ThemePalette {
+	return paletteFromSnapshot(t.w.current(printTreatment), t.idx)
 }
 
 // PollChanged reports whether a new theme arrived since the last call

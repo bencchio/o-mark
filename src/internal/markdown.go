@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -51,7 +52,8 @@ func paletteCSS(p ThemePalette, font string) string {
 	--o-mark-admonition-tip: ` + tip + `;
 	--o-mark-admonition-warning: ` + warning + `;
 	--o-mark-admonition-important: ` + important + `;
-	--o-mark-admonition-caution: ` + caution + `;` + hlPaletteVars(p) + `
+	--o-mark-admonition-caution: ` + caution + `;
+	--o-mark-page-gap-bg: ` + blendHex(p.Background, p.Border, 0.25) + `;` + hlPaletteVars(p) + `
 }
 body {
 	font-family: var(--o-mark-font);
@@ -116,7 +118,10 @@ th, td {
 	padding: 8px 13px;
 	text-align: left;
 }
-th { background-color: var(--o-mark-surface); font-weight: bold; }
+th { background-color: var(--o-mark-surface); font-weight: bold; cursor: pointer; position: relative; }
+th:hover { background-color: var(--o-mark-border); }
+th.ow-sorted::after { content: ''; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-bottom-color: var(--o-mark-accent); }
+th.ow-sorted.ow-sorted-desc::after { border-bottom-color: transparent; border-top-color: var(--o-mark-accent); }
 tbody tr:nth-child(even) td { background-color: var(--o-mark-surface); }
 dt { font-weight: bold; color: var(--o-mark-heading); }
 dd { margin-left: 6mm; margin-bottom: 4px; }
@@ -157,6 +162,14 @@ pre.mermaid { background-color: var(--o-mark-code-bg); border: 1px solid var(--o
 .o-mark-frontmatter { border-left: 3px solid var(--o-mark-border); margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: var(--o-mark-fg); }
+.o-mark-page { min-height: 297mm; box-sizing: border-box; }
+.o-mark-page > *:first-child { margin-top: 0; }
+.o-mark-page-gap { height: 3mm; margin: 6mm 0; background-color: var(--o-mark-page-gap-bg); }
+@media print {
+	.o-mark-page { min-height: 0; break-after: page; }
+	.o-mark-page:last-child { break-after: avoid; }
+	.o-mark-page-gap { display: none; }
+}
 `
 }
 
@@ -183,16 +196,34 @@ func LoadFile(path string) (string, error) {
 
 func renderBody(input, dir string) string {
 	fm, doc, hasFm := extractFrontmatter(input)
+	html := renderPagedBody(doc, dir)
+	if hasFm {
+		html = renderFrontmatterBlock(fm) + html
+	}
+	return html
+}
+
+// renderPagedBody renders doc as one HTML block, or as one ".o-mark-page" div
+// per page when splitPages finds top-level thematic breaks to split on.
+func renderPagedBody(doc, dir string) string {
+	if pages := splitPages(doc); pages != nil {
+		var b strings.Builder
+		for i, page := range pages {
+			if i > 0 {
+				b.WriteString(`<div class="o-mark-page-gap"></div>`)
+			}
+			b.WriteString(`<div class="o-mark-page">`)
+			b.WriteString(htmlPostProcess(page, dir))
+			b.WriteString(`</div>`)
+		}
+		return b.String()
+	}
 	var body bytes.Buffer
 	if err := md.Convert([]byte(doc), &body); err != nil {
 		log.Printf("markdown: cannot render document: %v", err)
 		return ""
 	}
-	html := htmlPostProcess(body.String(), dir)
-	if hasFm {
-		html = renderFrontmatterBlock(fm) + html
-	}
-	return html
+	return htmlPostProcess(body.String(), dir)
 }
 
 func RenderMarkdownWithCSS(input, css, dir string) string {

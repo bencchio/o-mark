@@ -1,6 +1,13 @@
 # O'Mark
 
+[![Latest release](https://img.shields.io/github/v/tag/bencchio/o-mark?label=release&sort=semver)](https://github.com/bencchio/o-mark/tags)
+[![Go version](https://img.shields.io/github/go-mod/go-version/bencchio/o-mark?filename=src%2Fgo.mod)](src/go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A minimalist markdown viewer. Go + Qt6 / QML.
+
+> Pre-1.0, active development — the on-disk config format and CLI surface may
+> still change between releases.
 
 ```
 o-mark document.md
@@ -32,7 +39,7 @@ next time.
 
 ## Requirements
 
-- Qt6, WebEngine, `pkg-config`, and `omarchy-theme` — see [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for versions and supported distros
+- Qt6, WebEngine, `pkg-config`, and `omarchy-lib-theme` — see [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for versions and supported distros
 - Go and CGO — see [docs/BUILDING.md](docs/BUILDING.md)
 
 ## Quick start
@@ -50,7 +57,7 @@ and [code/](examples/code/) for syntax highlighting across 11 languages.
 
 ## Install
 
-On Arch, install [omarchy-theme](https://github.com/bencchio/omarchy-theme)
+On Arch, install [omarchy-lib-theme](https://github.com/bencchio/omarchy-lib-theme)
 first.
 
 From the [0.7.0 release](https://github.com/bencchio/o-mark/releases/tag/0.7.0):
