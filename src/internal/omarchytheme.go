@@ -10,6 +10,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"unsafe"
 )
@@ -49,12 +50,39 @@ type omarchyColorFamily struct {
 // hardcoding them, so a library update that grows either array is caught by
 // a length mismatch instead of silently truncating.
 const (
-	omarchyRoleCount  = C.OMARCHY_LIB_THEME_ROLE_COUNT
-	omarchyColorCount = C.OMARCHY_LIB_THEME_COLOR_COUNT
-	// omarchy_lib_theme.h names treatments in this order: Original,
-	// Inverted, HighContrast, Mono, Print.
-	printTreatment = 4
+	omarchyRoleCount      = C.OMARCHY_LIB_THEME_ROLE_COUNT
+	omarchyColorCount     = C.OMARCHY_LIB_THEME_COLOR_COUNT
+	omarchyTreatmentCount = C.OMARCHY_LIB_THEME_TREATMENT_COUNT
 )
+
+// printTreatmentName is the treatment the PDF is drawn with. It is looked up by
+// name because the library owns the order: a treatment added before it would
+// move a fixed index.
+const printTreatmentName = "Print"
+
+// TreatmentNames returns the treatments the installed library names, in its
+// order. Index 0 is Original, the fallback for any index out of range.
+func TreatmentNames() []string {
+	names := make([]string, 0, omarchyTreatmentCount)
+	for i := 0; i < omarchyTreatmentCount; i++ {
+		if name := C.omarchy_lib_theme_treatment_name(C.size_t(i)); name != nil {
+			names = append(names, C.GoString(name))
+		}
+	}
+	return names
+}
+
+// TreatmentIndex returns the index of the treatment called name, ignoring case
+// and surrounding space, and whether the installed library names it.
+func TreatmentIndex(name string) (int, bool) {
+	want := strings.ToLower(strings.TrimSpace(name))
+	for i, have := range TreatmentNames() {
+		if strings.ToLower(have) == want {
+			return i, true
+		}
+	}
+	return 0, false
+}
 
 // omarchySnapshot mirrors OmarchyLibThemeSnapshot: every role resolved against the
 // theme in force, every color the theme declares, and whether it sits on a
@@ -244,6 +272,10 @@ func paletteFromOmarchy() (palette ThemePalette, ok bool) {
 type OmarchyThemeWatcher struct {
 	w   *omarchyWatcher
 	idx roleIndexes
+	// treatment is the one Palette and PollChanged read through; print is the
+	// index of Print, which PrintPalette always uses.
+	treatment int
+	print     int
 }
 
 // NewOmarchyThemeWatcher starts following the system's active theme. An
@@ -258,23 +290,33 @@ func NewOmarchyThemeWatcher() (*OmarchyThemeWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &OmarchyThemeWatcher{w: w, idx: idx}, nil
+	print, _ := TreatmentIndex(printTreatmentName)
+	return &OmarchyThemeWatcher{w: w, idx: idx, print: print}, nil
 }
 
-// Palette reads the theme currently in force.
+// SetTreatment chooses the treatment Palette and PollChanged read through; an
+// index out of range reads Original.
+func (t *OmarchyThemeWatcher) SetTreatment(index int) {
+	if index < 0 || index >= omarchyTreatmentCount {
+		index = 0
+	}
+	t.treatment = index
+}
+
+// Palette reads the theme currently in force through the chosen treatment.
 func (t *OmarchyThemeWatcher) Palette() ThemePalette {
-	return paletteFromSnapshot(t.w.current(0), t.idx)
+	return paletteFromSnapshot(t.w.current(t.treatment), t.idx)
 }
 
 // PrintPalette reads the theme through the Print treatment.
 func (t *OmarchyThemeWatcher) PrintPalette() ThemePalette {
-	return paletteFromSnapshot(t.w.current(printTreatment), t.idx)
+	return paletteFromSnapshot(t.w.current(t.print), t.idx)
 }
 
 // PollChanged reports whether a new theme arrived since the last call
 // (either to PollChanged or Palette).
 func (t *OmarchyThemeWatcher) PollChanged() (ThemePalette, bool) {
-	s, changed := t.w.pollChanged(0)
+	s, changed := t.w.pollChanged(t.treatment)
 	if !changed {
 		return ThemePalette{}, false
 	}

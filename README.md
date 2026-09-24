@@ -22,15 +22,15 @@ o-mark document.md
 - GitHub-style admonitions (`> [!NOTE]`, `[!TIP]`, `[!WARNING]`, `[!IMPORTANT]`, `[!CAUTION]`)
 - Local images inlined as `data:` URLs; collapsible YAML frontmatter
 - Links to other `.md` files open in a new O'Mark instance (see [INSTALL.md § 3](INSTALL.md))
-- 7 viewer themes (System, following the active Omarchy palette, plus 6 built-in: GitHub, Writer, Night, Sepia, Mono, Minimal) — extensible by dropping CSS into `~/.config/o-mark/themes/`
-- Live reload: the open document, `config.toml`, and theme files are watched and re-rendered on change
+- The active Omarchy theme, followed live, with a selector of treatments (Original, Inverted, HighContrast, Mono, Print) from omarchy-lib-theme, and a configurable font
+- Live reload: the open document, `config.toml`, and the Omarchy theme are watched and re-rendered on change
 - Keyboard-first: `PgUp`/`PgDn` scroll while arrow/`Home`/`End` move the word cursor, `Ctrl+±`/`Ctrl+0` zoom, `Esc` toggles the toolbar, `T`/`Z` jump to its controls, `Ctrl+Q` to quit — full list in [docs/KEYBOARD-SHORTCUTS.md](docs/KEYBOARD-SHORTCUTS.md)
 - Window title shows the current file path
 
 ## Configuration
 
 `~/.config/o-mark/config.toml` (created on first run) controls the starting
-theme, page orientation and font size, scrollbar visibility, code block line
+treatment, page format and orientation, font and font size, scrollbar visibility, code block line
 numbers, and toolbar position/visibility. See the comments in the generated
 file for details.
 
@@ -84,7 +84,7 @@ Without a package, see [INSTALL.md](INSTALL.md) or run `scripts/install.sh`.
 |----------|---------|
 | [docs/MANUAL.md](docs/MANUAL.md) | How to use O'Mark, with a FAQ |
 | [docs/CONFIG.md](docs/CONFIG.md) | Reference for `config.toml` |
-| [docs/THEMES.md](docs/THEMES.md) | The 7 themes and custom CSS |
+| [docs/THEMES.md](docs/THEMES.md) | The theme, the treatments and the font |
 | [docs/KEYBOARD-SHORTCUTS.md](docs/KEYBOARD-SHORTCUTS.md) | Every keyboard shortcut and mouse action |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build and test instructions |
 | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | System and Go dependencies |

@@ -119,33 +119,33 @@ control you were on the last time, so `Esc` brings you back to it.
 
 The toolbar holds the search bar (see [Search](#search)), the zoom reset
 button (`↺`), the PDF export control, the page orientation control, and the
-theme selector.
+treatment selector.
 
 ### Moving around the toolbar
 
 | Action | Keyboard |
 |---|---|
-| Go straight to the theme selector | `T` |
+| Go straight to the treatment selector | `T` |
 | Go straight to the zoom reset `↺` | `Z` |
 | Move between the controls | `←` / `→` |
 | Reset zoom (when `↺` is selected) | `Enter` or `Space` |
 | Flip the orientation (when it is selected) | `Enter` or `Space` |
 
-### Changing the theme
+### Changing the treatment
 
-With the theme selector focused:
+With the treatment selector focused:
 
 | Action | Keyboard |
 |---|---|
-| Switch theme without opening the list | `↑` / `↓` |
-| Open the theme list | `Space` or `Enter` |
+| Switch treatment without opening the list | `↑` / `↓` |
+| Open the treatment list | `Space` or `Enter` |
 | Move through the list | `↑` / `↓` |
-| Pick the highlighted theme | `Enter` |
-| Close the list, keeping the current theme | `Esc` |
+| Pick the highlighted treatment | `Enter` |
+| Close the list, keeping the current treatment | `Esc` |
 
 Closing the list with `Esc` leaves the toolbar open — you need a second `Esc` to
 go back to the document.
 
-The theme you are using when you quit becomes the one O'Mark starts with next
+The treatment you are using when you quit becomes the one O'Mark starts with next
 time. See [the configuration section of the README](../README.md#configuration)
 for the rest of the settings.

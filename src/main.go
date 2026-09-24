@@ -22,7 +22,7 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.7.5"
+var version = "0.7.6"
 
 // qtSink writes the session's output to QML context properties. It is the only
 // Qt-aware part of publication; the order the properties must land in lives in
@@ -112,6 +112,18 @@ func wirePageControl(pm *qml.QQmlPropertyMap, sess *internal.Session, sink inter
 	})
 }
 
+// wireTreatmentControl connects the QML property map's `select` handshake to
+// the session: each pick in the toolbar carries the index of a treatment of the
+// library's list.
+func wireTreatmentControl(pm *qml.QQmlPropertyMap, sess *internal.Session, sink internal.StateSink) {
+	pm.OnValueChanged(func(key string, value *qt.QVariant) {
+		if key != "select" {
+			return
+		}
+		sess.Apply(internal.TreatmentChosen{Index: value.ToInt()}).Publish(sink)
+	})
+}
+
 // startThemeWatcher follows the Omarchy theme (color, via libomarchy-lib-theme)
 // and font (file, via inotify — the library is colors-only) and asks the
 // session to refresh. A singleShot(0) fires on the first event loop tick to
@@ -155,18 +167,12 @@ func startThemeWatcher(sess *internal.Session, sink internal.StateSink, omarchyW
 	})
 }
 
-// startConfigWatcher watches config.toml and the known theme CSS files and
-// asks the session to reload. The session preserves the active theme, so a
-// config edit does not change what the user is reading.
-func startConfigWatcher(sess *internal.Session, sink internal.StateSink, diskThemes []internal.ViewerTheme, themesDir string) {
+// startConfigWatcher watches config.toml and asks the session to reload. The
+// session keeps the treatment and orientation the user picked, so a config edit
+// does not change what the user is reading.
+func startConfigWatcher(sess *internal.Session, sink internal.StateSink) {
 	watcher := qt.NewQFileSystemWatcher()
 	watchPath(watcher, filepath.Join(internal.ConfigDir(), "config.toml"))
-	for _, t := range diskThemes {
-		cssPath := filepath.Join(themesDir, t.ID+".css")
-		if _, err := os.Stat(cssPath); err == nil {
-			watchPath(watcher, cssPath)
-		}
-	}
 
 	watcher.OnFileChanged(func(path string) {
 		// Re-add after inotify drops the watch on atomic-replace saves.
@@ -192,19 +198,6 @@ func startDocWatcher(sess *internal.Session, sink internal.StateSink, absPath st
 		watchPath(watcher, path)
 		debounce.Start2()
 	})
-}
-
-// extractFontFamily parses the first font-family declaration from a CSS string.
-// Used for font verification at startup.
-func extractFontFamily(css string) string {
-	for _, line := range strings.Split(css, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "font-family:") {
-			val := strings.TrimSuffix(strings.TrimPrefix(line, "font-family:"), ";")
-			return strings.TrimSpace(val)
-		}
-	}
-	return ""
 }
 
 // resolveDocArg accepts either a bare local path (direct CLI use, e.g.
@@ -258,17 +251,10 @@ func main() {
 
 	internal.EnsureConfig(defaultConfigTOML)
 	cfg := internal.LoadConfig()
-	themesDir := internal.ThemesDir()
-	internal.CleanupLegacyThemes(themesDir)
-	internal.ExportBuiltinThemes(themesDir)
-	diskThemes := internal.DiskThemes(themesDir)
+	internal.RetireThemeSheets(internal.ThemesDir(), internal.ThemesOldDir())
 
-	// Verify fonts for each static theme at startup.
-	for _, t := range diskThemes {
-		css := internal.DiskThemeCSS(t.ID, themesDir)
-		if font := extractFontFamily(css); font != "" {
-			internal.VerifyFontStack(font, t.Label)
-		}
+	if cfg.Font != internal.MonoFont {
+		internal.VerifyFontStack(cfg.Font, "the config font")
 	}
 
 	qmlDir, err := extractUI()
@@ -307,8 +293,6 @@ func main() {
 		Anchor:        initialAnchor,
 		Config:        cfg,
 		DefaultConfig: defaultConfigTOML,
-		ThemesDir:     themesDir,
-		DiskThemes:    diskThemes,
 		Palette:       paletteSrc,
 	})
 	if err != nil {
@@ -324,18 +308,20 @@ func main() {
 	pageControl := qml.NewQQmlPropertyMap()
 	wirePageControl(pageControl, sess, sink)
 	ctx.SetContextProperty("pageControl", pageControl.QObject)
+	treatmentControl := qml.NewQQmlPropertyMap()
+	wireTreatmentControl(treatmentControl, sess, sink)
+	ctx.SetContextProperty("treatmentControl", treatmentControl.QObject)
 	engine.Load(qt.QUrl_FromLocalFile(filepath.Join(qmlDir, "main.qml")))
 	startThemeWatcher(sess, sink, omarchyWatcher)
-	startConfigWatcher(sess, sink, diskThemes, themesDir)
+	startConfigWatcher(sess, sink)
 	startDocWatcher(sess, sink, absPath)
 
 	qt.QApplication_Exec()
 
-	// Save the active theme, toolbar visibility and page orientation to config on exit.
+	// Save the treatment and the toolbar visibility to config on exit.
 	if roots := engine.RootObjects(); len(roots) > 0 {
 		sess.Apply(internal.Persist{
-			ViewerThemeIndex: roots[0].Property("viewerThemeIndex").ToInt(),
-			ToolbarVisible:   roots[0].Property("toolbarVisible").ToBool(),
+			ToolbarVisible: roots[0].Property("toolbarVisible").ToBool(),
 		})
 	}
 }

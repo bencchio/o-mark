@@ -4,7 +4,6 @@ import QtWebEngine 1.15
 Item {
     id: viewer
     property var colors: null
-    property int viewerThemeIndex: 0
     readonly property bool hasFocus: webView.activeFocus
     readonly property real zoomFactor: webView.zoomFactor
 
@@ -13,10 +12,8 @@ Item {
     function resetZoom() { webView.zoomFactor = zoomDefault }
     Component.onCompleted: webView.zoomFactor = zoomDefault
 
-    readonly property var viewerThemes: { try { return JSON.parse(viewerThemesJson) } catch(e) { return [] } }
-    readonly property var activeTheme: viewerThemes[viewerThemeIndex] || viewerThemes[0]
-    readonly property string activeHtml: activeTheme ? activeTheme.html : ""
-    readonly property color viewerBg: activeTheme ? activeTheme.bg : "#ffffff"
+    readonly property string activeHtml: documentHtml
+    readonly property color viewerBg: documentBg || "#ffffff"
 
     function requestFocus() { webView.forceActiveFocus() }
 

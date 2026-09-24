@@ -67,27 +67,27 @@ func TestSaveConfigPreservesComments(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	original := "# Tema del visor al arrancar.\nviewer_theme = \"github\"\n\n# Visibilidad del toolbar.\ntoolbar_visible = false\n"
+	original := "# Tratamiento del visor al arrancar.\nviewer_treatment = \"original\"\n\n# Visibilidad del toolbar.\ntoolbar_visible = false\n"
 	p := filepath.Join(dir, "config.toml")
 	if err := os.WriteFile(p, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	visible := true
-	SaveConfig(Config{ViewerTheme: "night", ToolbarVisible: &visible}, nil)
+	SaveConfig(Config{ViewerTreatment: "inverted", ToolbarVisible: &visible}, nil)
 
 	got, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := string(got)
-	for _, comment := range []string{"# Tema del visor al arrancar.", "# Visibilidad del toolbar."} {
+	for _, comment := range []string{"# Tratamiento del visor al arrancar.", "# Visibilidad del toolbar."} {
 		if !strings.Contains(body, comment) {
 			t.Errorf("comment %q was dropped", comment)
 		}
 	}
-	if !strings.Contains(body, `viewer_theme = "night"`) {
-		t.Errorf("viewer_theme was not updated, got:\n%s", body)
+	if !strings.Contains(body, `viewer_treatment = "inverted"`) {
+		t.Errorf("viewer_treatment was not updated, got:\n%s", body)
 	}
 	if !strings.Contains(body, "toolbar_visible = true") {
 		t.Errorf("toolbar_visible was not updated, got:\n%s", body)
@@ -99,14 +99,14 @@ func TestSaveConfigWritesWholeFileWhenMissing(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	SaveConfig(Config{ViewerTheme: "sepia"}, nil)
+	SaveConfig(Config{ViewerTreatment: "mono"}, nil)
 
 	got, err := os.ReadFile(filepath.Join(home, ".config", "o-mark", "config.toml"))
 	if err != nil {
 		t.Fatalf("config was not created: %v", err)
 	}
-	if !strings.Contains(string(got), `viewer_theme = "sepia"`) {
-		t.Errorf("viewer_theme missing, got:\n%s", got)
+	if !strings.Contains(string(got), `viewer_treatment = "mono"`) {
+		t.Errorf("viewer_treatment missing, got:\n%s", got)
 	}
 }
 
@@ -204,17 +204,17 @@ func TestSaveConfigMigratesTheRetiredWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "config.toml")
-	seed := "# Theme.\nviewer_theme = \"github\"\n\n# Maximum width.\ndocument_max_width = \"297mm\"\n\n# Font.\nfont_size_base = \"default\"\n"
+	seed := "# Theme.\nviewer_theme = \"github\"\n\n# Maximum width.\ndocument_max_width = \"297mm\"\n\n# Font.\nfont_size = \"default\"\n"
 	if err := os.WriteFile(p, []byte(seed), 0644); err != nil {
 		t.Fatal(err)
 	}
-	SaveConfig(Config{ViewerTheme: "night"}, []byte(testDefaults+"\n# Orientation.\npage_orientation = \"portrait\"\n"))
+	SaveConfig(Config{}, []byte(testDefaults+"\n# Orientation.\npage_orientation = \"portrait\"\n"))
 	got, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := string(got)
-	for _, want := range []string{"viewer_theme = \"night\"", "# Format.\n# a4 or a5.\npage_format = \"a4\"", "# Orientation.\npage_orientation = \"landscape\"", "# Theme.", "# Font.", "font_size_base = \"default\""} {
+	for _, want := range []string{"# Format.\n# a4 or a5.\npage_format = \"a4\"", "# Orientation.\npage_orientation = \"landscape\"", "# Font.", "font_size = \"default\""} {
 		if !strings.Contains(out, want) {
 			t.Errorf("saved config is missing %q:\n%s", want, out)
 		}
@@ -233,6 +233,28 @@ func TestRemoveTOMLKey(t *testing.T) {
 	}
 	if got := removeTOMLKey("a = 1\n\n# about b\nb = 2\n\nc = 3\n", "b"); got != "a = 1\n\nc = 3\n" {
 		t.Errorf("removing b: got %q", got)
+	}
+}
+
+func TestSaveConfigDropsTheRetiredTheme(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	seed := "# Viewer theme.\nviewer_theme = \"night\"\n\n# Kept.\ntoolbar_position = \"top\"\n"
+	if err := os.WriteFile(p, []byte(seed), 0644); err != nil {
+		t.Fatal(err)
+	}
+	SaveConfig(Config{}, nil)
+	got, _ := os.ReadFile(p)
+	if strings.Contains(string(got), "viewer_theme") || strings.Contains(string(got), "Viewer theme.") {
+		t.Errorf("the retired theme and its comment must be gone:\n%s", got)
+	}
+	if !strings.Contains(string(got), "# Kept.\ntoolbar_position = \"top\"") {
+		t.Errorf("the rest of the file must stay:\n%s", got)
 	}
 }
 
@@ -302,14 +324,14 @@ func TestLoadConfigZoomDefault(t *testing.T) {
 // An integer font_size_base used to be accepted; now it is invalid, but it must
 // not take the rest of the file down with it.
 func TestLoadConfigIntegerFontSizeIsInvalidNotFatal(t *testing.T) {
-	cfg := loadConfigFrom(t, "font_size_base = 14\ntoolbar_position = \"top\"\npage_orientation = \"landscape\"\n")
-	if cfg.FontSizeBase != DeferToTheme {
-		t.Errorf("font_size_base: got %q, want the theme's size", cfg.FontSizeBase)
+	cfg := loadConfigFrom(t, "font_size = 14\ntoolbar_position = \"top\"\npage_orientation = \"landscape\"\n")
+	if cfg.FontSize != DeferToTheme {
+		t.Errorf("font_size: got %q, want the default size", cfg.FontSize)
 	}
 	if cfg.ToolbarPosition != "top" || cfg.PageOrientation != "landscape" {
 		t.Errorf("the other keys were lost: %q %q", cfg.ToolbarPosition, cfg.PageOrientation)
 	}
-	if got := loadConfigFrom(t, "font_size_base = \"14\"\n").FontSizeBase; got != "14" {
+	if got := loadConfigFrom(t, "font_size = \"14\"\n").FontSize; got != "14" {
 		t.Errorf("a quoted number is still valid, got %q", got)
 	}
 }
@@ -326,7 +348,7 @@ func TestSaveConfigLeavesThePageKeysToTheUser(t *testing.T) {
 	if err := os.WriteFile(p, []byte(seed), 0644); err != nil {
 		t.Fatal(err)
 	}
-	SaveConfig(Config{ViewerTheme: "night", PageFormat: "a3", PageOrientation: "landscape"}, nil)
+	SaveConfig(Config{PageFormat: "a3", PageOrientation: "landscape"}, nil)
 	got, _ := os.ReadFile(p)
 	for _, want := range []string{"page_format = \"a5\"", "page_orientation = \"portrait\""} {
 		if !strings.Contains(string(got), want) {
@@ -335,17 +357,17 @@ func TestSaveConfigLeavesThePageKeysToTheUser(t *testing.T) {
 	}
 }
 
-const testDefaults = "# Theme.\nviewer_theme = \"github\"\n\n# Format.\n# a4 or a5.\npage_format = \"a4\"\n\n# Zoom.\nzoom_default = 1.0\n"
+const testDefaults = "# Treatment.\nviewer_treatment = \"original\"\n\n# Format.\n# a4 or a5.\npage_format = \"a4\"\n\n# Zoom.\nzoom_default = 1.0\n"
 
 func TestCompleteMissingKeys(t *testing.T) {
-	body := "# My own note\nviewer_theme = \"night\"\n"
+	body := "# My own note\nviewer_treatment = \"inverted\"\n"
 	got := completeMissingKeys(body, testDefaults)
-	for _, want := range []string{"# My own note", "viewer_theme = \"night\"", "# Format.\n# a4 or a5.\npage_format = \"a4\"", "# Zoom.\nzoom_default = 1.0"} {
+	for _, want := range []string{"# My own note", "# Format.\n# a4 or a5.\npage_format = \"a4\"", "# Zoom.\nzoom_default = 1.0"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in\n%s", want, got)
 		}
 	}
-	if strings.Count(got, "viewer_theme") != 1 {
+	if strings.Count(got, "viewer_treatment") != 1 {
 		t.Errorf("a present key was duplicated:\n%s", got)
 	}
 	if again := completeMissingKeys(got, testDefaults); again != got {
@@ -364,12 +386,12 @@ func TestSaveConfigCompletesAnOldFileOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(p, []byte("# Mine.\nviewer_theme = \"github\"\n"), 0644); err != nil {
+	if err := os.WriteFile(p, []byte("# Mine.\nviewer_treatment = \"original\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	SaveConfig(Config{ViewerTheme: "night"}, []byte(testDefaults))
+	SaveConfig(Config{}, []byte(testDefaults))
 	first, _ := os.ReadFile(p)
-	SaveConfig(Config{ViewerTheme: "night"}, []byte(testDefaults))
+	SaveConfig(Config{}, []byte(testDefaults))
 	second, _ := os.ReadFile(p)
 	if string(first) != string(second) {
 		t.Errorf("a second save changed the file:\n%s\n---\n%s", first, second)
@@ -385,7 +407,7 @@ func TestShippedConfigHasEveryKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"viewer_theme", "page_format", "page_orientation", "pdf_margin_vertical", "pdf_margin_horizontal", "zoom_default", "font_size_base", "show_scrollbars", "code_line_numbers", "toolbar_position", "toolbar_visible"} {
+	for _, key := range []string{"page_format", "page_orientation", "pdf_margin_vertical", "pdf_margin_horizontal", "zoom_default", "font", "font_size", "viewer_treatment", "show_scrollbars", "code_line_numbers", "toolbar_position", "toolbar_visible"} {
 		if _, ok := tomlValue(string(data), key); !ok {
 			t.Errorf("the shipped config.toml does not set %q", key)
 		}
@@ -407,9 +429,94 @@ func TestSaveConfigMigrationKeepsAnExistingOrientation(t *testing.T) {
 	if err := os.WriteFile(p, []byte("document_max_width = \"297mm\"\npage_orientation = \"portrait\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	SaveConfig(Config{ViewerTheme: "github"}, nil)
+	SaveConfig(Config{}, nil)
 	got, _ := os.ReadFile(p)
 	if !strings.Contains(string(got), `page_orientation = "portrait"`) || strings.Contains(string(got), "document_max_width") {
 		t.Errorf("the explicit orientation must stay and the old width go:\n%s", got)
+	}
+}
+
+func TestLoadConfigFont(t *testing.T) {
+	tests := []struct{ body, want string }{
+		{"", "mono"},
+		{"font = \"mono\"\n", "mono"},
+		{"font = \"Liberation Serif, serif\"\n", "Liberation Serif, serif"},
+		{"font = \"Inter, 'Helvetica Neue', sans-serif\"\n", "Inter, 'Helvetica Neue', sans-serif"},
+		{"font = \"a; color: red\"\n", "mono"},
+		{"font = \"a } body { x\"\n", "mono"},
+		{"font = \"url(x)\"\n", "mono"},
+	}
+	for _, tc := range tests {
+		if got := loadConfigFrom(t, tc.body).Font; got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.body, got, tc.want)
+		}
+	}
+}
+
+func TestLoadConfigViewerTreatment(t *testing.T) {
+	tests := []struct{ body, want string }{
+		{"", "original"},
+		{"viewer_treatment = \"Inverted\"\n", "inverted"},
+		{"viewer_treatment = \" HighContrast \"\n", "highcontrast"},
+	}
+	for _, tc := range tests {
+		if got := loadConfigFrom(t, tc.body).ViewerTreatment; got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.body, got, tc.want)
+		}
+	}
+}
+
+func TestLoadConfigReadsTheRetiredFontSizeName(t *testing.T) {
+	if got := loadConfigFrom(t, "font_size_base = \"17px\"\n").FontSize; got != "17px" {
+		t.Errorf("font_size_base should still be read, got %q", got)
+	}
+	if got := loadConfigFrom(t, "font_size = \"18px\"\nfont_size_base = \"17px\"\n").FontSize; got != "18px" {
+		t.Errorf("font_size wins over the retired name, got %q", got)
+	}
+}
+
+func TestSaveConfigMigratesFontSizeBase(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte("# Size.\nfont_size_base = \"17px\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	defaults := "# Font size.\nfont_size = \"default\"\n\n# Treatment.\nviewer_treatment = \"original\"\n"
+	SaveConfig(Config{ViewerTreatment: "inverted"}, []byte(defaults))
+	got, _ := os.ReadFile(p)
+	out := string(got)
+	for _, want := range []string{"# Font size.\nfont_size = \"17px\"", "viewer_treatment = \"inverted\""} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "font_size_base") || strings.Contains(out, "# Size.") {
+		t.Errorf("the retired key and its comment must be gone:\n%s", out)
+	}
+	if cfg := LoadConfig(); cfg.FontSize != "17px" || cfg.ViewerTreatment != "inverted" {
+		t.Errorf("reload: %q %q", cfg.FontSize, cfg.ViewerTreatment)
+	}
+}
+
+func TestSaveConfigKeepsAnExistingFontSize(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte("font_size = \"20px\"\nfont_size_base = \"17px\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	SaveConfig(Config{}, nil)
+	got, _ := os.ReadFile(p)
+	if !strings.Contains(string(got), `font_size = "20px"`) || strings.Contains(string(got), "font_size_base") {
+		t.Errorf("font_size kept and the old name dropped:\n%s", got)
 	}
 }

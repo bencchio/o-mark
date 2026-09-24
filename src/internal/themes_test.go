@@ -7,94 +7,35 @@ import (
 	"testing"
 )
 
-var builtinThemes = []string{"github", "writer", "night", "sepia", "mono", "minimal"}
-
-// The shared highlight rules read these variables; a theme missing one falls
-// back to a literal default that ignores its palette.
-func TestThemesDefineHighlightVariables(t *testing.T) {
-	roles := []string{"keyword", "string", "comment", "number", "title", "type", "builtin", "meta"}
-	for _, name := range builtinThemes {
-		css := ThemeCSS(name)
-		if css == "" {
-			t.Fatalf("theme %s has no CSS", name)
-		}
-		for _, role := range roles {
-			if !strings.Contains(css, "--o-mark-hl-"+role+":") {
-				t.Errorf("theme %s is missing --o-mark-hl-%s", name, role)
-			}
+// The shared highlight rules read these variables; a base layout missing one
+// falls back to a literal default that ignores its palette.
+func TestBaseLayoutDefinesHighlightVariables(t *testing.T) {
+	css := paletteCSS(builtinPalette(false), "monospace")
+	for _, role := range []string{"keyword", "string", "comment", "number", "title", "type", "builtin", "meta"} {
+		if !strings.Contains(css, "--o-mark-hl-"+role+":") {
+			t.Errorf("the base layout is missing --o-mark-hl-%s", role)
 		}
 	}
 }
 
-// Every theme styles KaTeX's own classes. The math library prefixed its
+// The layout styles KaTeX's own classes. The math library prefixed its
 // structural class names in a recent release, so these are worth pinning.
-func TestThemesStyleKatexClasses(t *testing.T) {
-	for _, name := range builtinThemes {
-		css := ThemeCSS(name)
-		for _, sel := range []string{".katex ", ".katex-display", ".katex .mord.text", ".katex .text > span"} {
-			if !strings.Contains(css, sel) {
-				t.Errorf("theme %s is missing the selector %q", name, sel)
-			}
+func TestBaseLayoutStylesKatexClasses(t *testing.T) {
+	css := paletteCSS(builtinPalette(false), "monospace")
+	for _, sel := range []string{".katex ", ".katex-display", ".katex .mord.text", ".katex .text > span"} {
+		if !strings.Contains(css, sel) {
+			t.Errorf("the base layout is missing the selector %q", sel)
 		}
 	}
 }
 
-// The header used to be nearly invisible against the page, with the zebra
-// stripes darker than the header itself.
-func TestGithubTableHeaderContrast(t *testing.T) {
-	css := ThemeCSS("github")
-	if !strings.Contains(css, "th { background-color: #eaeef2") {
-		t.Error("github table header lost its darker background")
-	}
-	if !strings.Contains(css, "border-bottom: 2px solid #d0d7de") {
-		t.Error("github table header lost its definition border")
-	}
-	if !strings.Contains(css, "tbody tr:nth-child(even) td { background-color: #f6f8fa; }") {
-		t.Error("github zebra stripes must sit lighter than the header")
-	}
-}
-
-func TestWriterHeadingSize(t *testing.T) {
-	if !strings.Contains(ThemeCSS("writer"), "font-size: 3.2em") {
-		t.Error("writer top heading size changed")
-	}
-}
-
-// A built-in CSS the user edited by hand outlives the next export; a missing
-// one comes back, so deleting a file is how the shipped theme is restored.
-func TestExportBuiltinThemesKeepsUserEdits(t *testing.T) {
-	dir := t.TempDir()
-	ExportBuiltinThemes(dir)
-
-	edited := filepath.Join(dir, "github.css")
-	if err := os.WriteFile(edited, []byte("/* mine */"), 0644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	if err := os.Remove(filepath.Join(dir, "night.css")); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-
-	ExportBuiltinThemes(dir)
-
-	got, err := os.ReadFile(edited)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if string(got) != "/* mine */" {
-		t.Errorf("github.css was overwritten, want the user edit to survive")
-	}
-	if css, err := os.ReadFile(filepath.Join(dir, "night.css")); err != nil {
-		t.Errorf("night.css was not restored: %v", err)
-	} else if string(css) != ThemeCSS("night") {
-		t.Errorf("night.css does not match the embedded theme")
-	}
-}
-
-// While a built-in file is absent the theme still resolves, from the embedded CSS.
-func TestDiskThemeCSSFallsBackToEmbedded(t *testing.T) {
-	dir := t.TempDir()
-	if got := DiskThemeCSS("night", dir); got != ThemeCSS("night") {
-		t.Errorf("DiskThemeCSS did not fall back to the embedded theme")
+// The sheet belongs to the page format, not to the layout.
+func TestBaseLayoutLeavesThePageSizeToTheConfig(t *testing.T) {
+	css := paletteCSS(builtinPalette(false), "monospace")
+	for _, side := range []string{"210mm", "297mm"} {
+		if strings.Contains(css, side) {
+			t.Errorf("the base layout fixes a page side (%s)", side)
+		}
 	}
 }
 
@@ -133,17 +74,13 @@ func TestOmarchyStatePathDefaultsToHome(t *testing.T) {
 	}
 }
 
-// The sheet belongs to the page format, not to a theme.
-func TestThemesLeaveThePageSizeToTheConfig(t *testing.T) {
-	css := map[string]string{"system": paletteCSS(GetThemePalette("omarchy"), "sans-serif")}
-	for _, id := range []string{"github", "writer", "night", "sepia", "mono", "minimal"} {
-		css[id] = DiskThemeCSS(id, t.TempDir())
-	}
-	for id, c := range css {
-		for _, side := range []string{"210mm", "297mm"} {
-			if strings.Contains(c, side) {
-				t.Errorf("theme %s fixes a page side (%s)", id, side)
-			}
+// The base layout is the one Mono's sheet had: 15px, a generous line height and
+// the smaller headings, until the library carries fonts and spacing.
+func TestBaseLayoutTakesMonosSizes(t *testing.T) {
+	css := paletteCSS(builtinPalette(false), "monospace")
+	for _, want := range []string{"font-size: 15px;", "line-height: 1.9;", "h1 {\n\tfont-size: 2em;", "h2 {\n\tfont-size: 1.6em;"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("the base layout is missing %q", want)
 		}
 	}
 }

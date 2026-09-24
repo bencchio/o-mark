@@ -79,9 +79,9 @@ percentage.
 ## Toolbar and themes
 
 `Esc` toggles the toolbar; `T` / `Z` jump to its controls. The toolbar holds
-the theme selector, the zoom indicator, PDF export, the page orientation and
+the treatment selector, the zoom indicator, PDF export, the page orientation and
 the current file name.
-Themes and their customization live in [docs/THEMES.md](THEMES.md).
+The theme and the treatments live in [docs/THEMES.md](THEMES.md).
 
 ## Live reload
 

@@ -2,7 +2,6 @@ package internal
 
 import (
 	"bytes"
-	"embed"
 	"fmt"
 	"log"
 	"os"
@@ -11,17 +10,6 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 )
-
-//go:embed themes/*.css
-var themesFS embed.FS
-
-func ThemeCSS(name string) string {
-	data, err := themesFS.ReadFile("themes/" + name + ".css")
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
 
 func paletteCSS(p ThemePalette, font string) string {
 	note := p.Accent
@@ -57,10 +45,10 @@ func paletteCSS(p ThemePalette, font string) string {
 }
 body {
 	font-family: var(--o-mark-font);
-	line-height: 1.6;
+	line-height: 1.9;
 	color: var(--o-mark-fg);
 	background-color: var(--o-mark-bg);
-	font-size: 16px;
+	font-size: 15px;
 	margin: 8mm auto;
 	padding: 0 10mm;
 	box-sizing: border-box;
@@ -70,20 +58,20 @@ p { margin: 0 0 1em 0; }
 del { text-decoration: line-through; }
 img { max-width: 100%; height: auto; }
 h1 {
-	font-size: 2.4em;
+	font-size: 2em;
 	font-weight: bold;
 	color: var(--o-mark-heading);
 	border-bottom: 1px solid var(--o-mark-border);
 	padding-bottom: 8px;
 }
 h2 {
-	font-size: 1.8em;
+	font-size: 1.6em;
 	font-weight: bold;
 	color: var(--o-mark-heading);
 	border-bottom: 1px solid var(--o-mark-border);
 	padding-bottom: 6px;
 }
-h3 { font-size: 1.4em; font-weight: bold; color: var(--o-mark-heading); }
+h3 { font-size: 1.3em; font-weight: bold; color: var(--o-mark-heading); }
 h4 { font-size: 1.15em; font-weight: bold; color: var(--o-mark-heading); }
 h5, h6 { font-size: 1em; font-weight: bold; color: var(--o-mark-heading); }
 code {

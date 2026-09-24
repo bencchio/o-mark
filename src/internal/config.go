@@ -28,8 +28,11 @@ var cssLengthRe = regexp.MustCompile(`^\d+(\.\d+)?(mm|cm|in|px|pt|pc|%|ch|em|rem
 var bareNumberRe = regexp.MustCompile(`^\d+$`)
 
 type Config struct {
-	ViewerTheme     string `toml:"viewer_theme"`
-	FontSizeBase    string `toml:"font_size_base"`
+	FontSize string `toml:"font_size"`
+	// Font is "mono", the Omarchy mono font, or a CSS font stack.
+	Font string `toml:"font"`
+	// ViewerTreatment is the lowercase name of the treatment the viewer starts with.
+	ViewerTreatment string `toml:"viewer_treatment"`
 	ShowScrollbars  bool   `toml:"show_scrollbars"`
 	ToolbarPosition string `toml:"toolbar_position"`
 	ToolbarVisible  *bool  `toml:"toolbar_visible"`
@@ -96,10 +99,9 @@ func EnsureConfig(defaultTOML []byte) {
 	}
 }
 
-// configRaw mirrors Config but keeps FontSizeBase as a raw toml.Primitive so a
-// legacy integer value (font_size_base = 14) doesn't abort the whole decode.
+// configRaw mirrors Config but keeps the font size as a raw toml.Primitive so an
+// integer value (font_size = 14) doesn't abort the whole decode.
 type configRaw struct {
-	ViewerTheme string `toml:"viewer_theme"`
 	// DocumentMaxWidth is the retired width key, read only to migrate an old
 	// config to an orientation; it never reaches Config.
 	DocumentMaxWidth    string         `toml:"document_max_width"`
@@ -108,24 +110,28 @@ type configRaw struct {
 	PdfMarginVertical   string         `toml:"pdf_margin_vertical"`
 	PdfMarginHorizontal string         `toml:"pdf_margin_horizontal"`
 	ZoomDefault         toml.Primitive `toml:"zoom_default"`
-	FontSizeBase        toml.Primitive `toml:"font_size_base"`
-	ShowScrollbars      bool           `toml:"show_scrollbars"`
-	ToolbarPosition     string         `toml:"toolbar_position"`
-	ToolbarVisible      *bool          `toml:"toolbar_visible"`
-	CodeLineNumbers     *bool          `toml:"code_line_numbers"`
+	FontSize            toml.Primitive `toml:"font_size"`
+	// LegacyFontSizeBase is the retired name of font_size, read only to migrate.
+	LegacyFontSizeBase toml.Primitive `toml:"font_size_base"`
+	Font               string         `toml:"font"`
+	ViewerTreatment    string         `toml:"viewer_treatment"`
+	ShowScrollbars     bool           `toml:"show_scrollbars"`
+	ToolbarPosition    string         `toml:"toolbar_position"`
+	ToolbarVisible     *bool          `toml:"toolbar_visible"`
+	CodeLineNumbers    *bool          `toml:"code_line_numbers"`
 }
 
-// decodeFontSizeBase resolves the raw FontSizeBase value. It returns "" when
-// the key is absent or is not a string; an integer (the retired form) is
-// invalid, so the theme's own size applies.
-func decodeFontSizeBase(p toml.Primitive) string {
+// decodeFontSize resolves a raw font size. It returns "" when the key is absent
+// or is not a string; an integer (the retired form) is invalid, so the base
+// size applies.
+func decodeFontSize(key string, p toml.Primitive) string {
 	var s string
 	if err := toml.PrimitiveDecode(p, &s); err == nil {
 		return s
 	}
 	var i int
 	if err := toml.PrimitiveDecode(p, &i); err == nil {
-		log.Printf("config: font_size_base = %d must be a string such as %q, using the theme's size", i, strconv.Itoa(i)+"px")
+		log.Printf("config: %s = %d must be a string such as %q, using the default size", key, i, strconv.Itoa(i)+"px")
 	}
 	return ""
 }
@@ -160,6 +166,28 @@ func decodeZoomDefault(p toml.Primitive) float64 {
 	return f
 }
 
+// MonoFont is the value of font that means the Omarchy mono font.
+const MonoFont = "mono"
+
+// fontRe matches a font stack: names and generic families, with the quotes,
+// commas, spaces, dots, hyphens and underscores they use. It keeps a value from
+// closing the CSS declaration it is interpolated into.
+var fontRe = regexp.MustCompile(`^[A-Za-z0-9 ,'"._-]+$`)
+
+// validFont returns v when it is a font stack, MonoFont for an empty value, and
+// MonoFont with a log line for anything else.
+func validFont(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return MonoFont
+	}
+	if !fontRe.MatchString(v) {
+		log.Printf("config: invalid font %q, falling back to %s", v, MonoFont)
+		return MonoFont
+	}
+	return v
+}
+
 // marginRe matches a margin: a plain mm length.
 var marginRe = regexp.MustCompile(`^\d+(\.\d+)?mm$`)
 
@@ -190,15 +218,11 @@ func LoadConfig() Config {
 		log.Printf("config: cannot read %s: %v", p, err)
 	}
 	cfg := Config{
-		ViewerTheme:     raw.ViewerTheme,
-		FontSizeBase:    decodeFontSizeBase(raw.FontSizeBase),
+		FontSize:        decodeFontSize("font_size", raw.FontSize),
 		ShowScrollbars:  raw.ShowScrollbars,
 		ToolbarPosition: raw.ToolbarPosition,
 		ToolbarVisible:  raw.ToolbarVisible,
 		CodeLineNumbers: raw.CodeLineNumbers,
-	}
-	if cfg.ViewerTheme == "" {
-		cfg.ViewerTheme = "github"
 	}
 	if f, ok := parseFormat(raw.PageFormat); ok {
 		cfg.PageFormat = f
@@ -219,12 +243,21 @@ func LoadConfig() Config {
 	cfg.PdfMarginVertical = validMargin("pdf_margin_vertical", raw.PdfMarginVertical, defaultMarginVertical)
 	cfg.PdfMarginHorizontal = validMargin("pdf_margin_horizontal", raw.PdfMarginHorizontal, defaultMarginHorizontal)
 	cfg.ZoomDefault = decodeZoomDefault(raw.ZoomDefault)
-	if cfg.FontSizeBase == "" {
-		// Absent or non-numeric (e.g. a broken value) — defer to the theme.
-		cfg.FontSizeBase = DeferToTheme
-	} else if !isDeferredOrLength(cfg.FontSizeBase) {
-		log.Printf("config: invalid font_size_base %q, falling back to theme default", cfg.FontSizeBase)
-		cfg.FontSizeBase = DeferToTheme
+	if cfg.FontSize == "" {
+		// A file written before font_size existed still sets its size as font_size_base.
+		cfg.FontSize = decodeFontSize("font_size_base", raw.LegacyFontSizeBase)
+	}
+	if cfg.FontSize == "" {
+		// Absent or non-string (e.g. a broken value): the base size applies.
+		cfg.FontSize = DeferToTheme
+	} else if !isDeferredOrLength(cfg.FontSize) {
+		log.Printf("config: invalid font_size %q, falling back to the default size", cfg.FontSize)
+		cfg.FontSize = DeferToTheme
+	}
+	cfg.Font = validFont(raw.Font)
+	cfg.ViewerTreatment = strings.ToLower(strings.TrimSpace(raw.ViewerTreatment))
+	if cfg.ViewerTreatment == "" {
+		cfg.ViewerTreatment = "original"
 	}
 	if cfg.ToolbarPosition != "top" && cfg.ToolbarPosition != "bottom" {
 		cfg.ToolbarPosition = "bottom"
@@ -293,8 +326,8 @@ func tomlBool(v bool) string {
 	return "false"
 }
 
-// SaveConfig persists the settings the session changes — the active theme and
-// the toolbar visibility — by substituting them in place, so the comments that
+// SaveConfig persists the settings the session changes — the active theme, the
+// treatment and the toolbar visibility — by substituting them in place, so the comments that
 // document every option survive the write. Page format and orientation are
 // defaults only the user edits, so they are never written here, except once to
 // migrate a retired document_max_width. Keys the file lacks are then appended
@@ -324,7 +357,7 @@ func SaveConfig(cfg Config, defaultTOML []byte) {
 		body = defaultTOML
 	}
 
-	updated := setTOMLValue(string(body), "viewer_theme", strconv.Quote(cfg.ViewerTheme))
+	updated := removeTOMLKey(string(body), "viewer_theme")
 	if cfg.ToolbarVisible != nil {
 		updated = setTOMLValue(updated, "toolbar_visible", tomlBool(*cfg.ToolbarVisible))
 	}
@@ -334,9 +367,20 @@ func SaveConfig(cfg Config, defaultTOML []byte) {
 	legacyWidth, hadLegacy := tomlValue(updated, "document_max_width")
 	_, hadOrientation := tomlValue(updated, "page_orientation")
 	updated = removeTOMLKey(updated, "document_max_width")
+	if cfg.ViewerTreatment != "" {
+		updated = setTOMLValue(updated, "viewer_treatment", strconv.Quote(cfg.ViewerTreatment))
+	}
+	// A retired font_size_base becomes font_size once, and only when the file
+	// has no font_size of its own.
+	legacySize, hadLegacySize := tomlValue(updated, "font_size_base")
+	_, hadFontSize := tomlValue(updated, "font_size")
+	updated = removeTOMLKey(updated, "font_size_base")
 	updated = completeMissingKeys(updated, string(defaultTOML))
 	if hadLegacy && !hadOrientation {
 		updated = setTOMLValue(updated, "page_orientation", strconv.Quote(legacyOrientation(legacyWidth)))
+	}
+	if hadLegacySize && !hadFontSize {
+		updated = setTOMLValue(updated, "font_size", strconv.Quote(legacySize))
 	}
 	if err := os.WriteFile(p, []byte(updated), 0644); err != nil {
 		log.Printf("config: cannot write: %v", err)
@@ -437,7 +481,7 @@ func ConfigOverrideCSS(cfg Config) string {
 	sb := &strings.Builder{}
 	fmt.Fprintf(sb, ":root { --o-mark-page-width: %s; --o-mark-page-height: %s; }\n", width, height)
 	props := []string{"max-width: var(--o-mark-page-width)"}
-	if f := cssLength(cfg.FontSizeBase); f != "" {
+	if f := cssLength(cfg.FontSize); f != "" {
 		props = append(props, "font-size: "+f)
 	}
 	fmt.Fprintf(sb, "body { %s }\n", strings.Join(props, "; "))

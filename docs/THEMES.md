@@ -1,65 +1,46 @@
-# Themes
+# Theme and treatments
 
-O'Mark ships seven viewer themes that control the look of the document area:
-**System** plus six built-in CSS themes. You can also add your own.
+O'Mark shows the document with the colors of the active Omarchy theme. It
+follows that theme live: switch theme in Omarchy and the viewer repaints, with
+no restart. The viewer has no list of themes of its own.
 
-## The seven themes
+## Treatments
 
-| Theme | Background | Notes |
-|-------|-----------|-------|
-| System | dynamic | Follows the active Omarchy palette (background, foreground, accent, code colors) and font. Requires a running Omarchy install; falls back to a light palette otherwise. |
-| GitHub | `#ffffff` | GitHub-flavored: Inter font, explicit table header contrast. |
-| Writer | `#e8e0d0` | Warm paper background, Liberation Serif body. |
-| Night | dark | Dark theme with its own navigation/accent colors. |
-| Sepia | sepia | Sepia paper, Liberation Serif body. |
-| Mono | mono | JetBrains Mono throughout. |
-| Minimal | minimal | Minimalist Inter-based theme. |
+On top of the theme, a **treatment** restates its colors. The toolbar has a
+selector with every treatment the installed
+[omarchy-lib-theme](https://github.com/bencchio/omarchy-lib-theme) names:
 
-## Where themes live
+| Treatment | What it does |
+|-----------|--------------|
+| Original | The theme exactly as declared. |
+| Inverted | The same identity with its polarity flipped: a dark theme becomes light and the other way round, each color keeping its hue. |
+| HighContrast | Every color pushed further from the background, for readability. |
+| Mono | The theme's own scale, from background to foreground, with no hue. |
+| Print | White page, black text and greys. |
 
-On first run O'Mark exports its six built-in CSS files to
-`~/.config/o-mark/themes/`. From then on, the file on disk is the source of
-truth for that theme: a hand edit wins over the embedded version and survives
-a relaunch. Deleting a file restores the built-in on the next launch.
+The names and their number come from the library, so a treatment it adds later
+shows up in the selector with no change in O'Mark. Pick one with the mouse, or
+press `T` to jump to the selector. Both the document and the toolbar take the
+treatment's colors. The treatment active when you quit is saved as
+`viewer_treatment` and used the next time.
 
-The `System` theme is not a file — it is rendered on the fly from the Omarchy
-palette and the current system font.
+The exported PDF always uses Print, whatever treatment is on screen.
 
-## Adding a custom theme
+Without a running Omarchy install the selector is hidden and the viewer uses a
+light palette.
 
-Drop a `.css` file into `~/.config/o-mark/themes/` and restart. The theme
-appears in the selector with a label derived from the file name (e.g.
-`mytheme.css` becomes "Mytheme"). To make it fit the viewer chrome, set the
-variables other themes use (see an existing file for the full set), most
-importantly:
+## Font
 
-```css
-:root {
-  --o-mark-bg: #ffffff;
-  --o-mark-fg: #1f2328;
-  --o-mark-accent: #0969da;
-  --o-mark-surface: #f6f8fa;
-  --o-mark-border: #d8dee4;
-  --o-mark-code-bg: #f6f8fa;
-  --o-mark-code-fg: #1f2328;
-  --o-mark-link: #0969da;
-  --o-mark-heading: #1f2328;
-  --o-mark-selection-bg: #b6e3ff;
-  --o-mark-selection-fg: #1f2328;
-  --o-mark-font: ...;
-  --o-mark-admonition-note: ...;
-  --o-mark-admonition-tip: ...;
-  --o-mark-admonition-warning: ...;
-  --o-mark-admonition-important: ...;
-  --o-mark-admonition-caution: ...;
-}
-```
+The document font is the `font` key of the config: `"mono"` (the default) is the
+Omarchy mono font, and any CSS font stack works, such as
+`"Liberation Serif, serif"`. `font_size` sets the base size. See
+[docs/CONFIG.md](CONFIG.md) and [docs/FONTS.md](FONTS.md) for the recommended
+packages.
 
-A custom theme is picked up alongside the built-ins and does not need any
-other registration.
+## From the old themes
 
-## Fonts
-
-Each theme names its preferred fonts with CSS fallbacks. Missing fonts fall
-back to Liberation, DejaVu, and Noto. See [docs/FONTS.md](FONTS.md) for the
-recommended packages per distribution.
+Earlier versions listed six CSS themes (GitHub, Writer, Night, Sepia, Mono and
+Minimal) beside System. They are gone. The first launch moves the `.css` files
+you had in `~/.config/o-mark/themes/` into `~/.config/o-mark/themes-old/`,
+without deleting or overwriting anything, and a `viewer_theme` in your config is
+dropped on the next quit. Custom CSS is not supported for now.

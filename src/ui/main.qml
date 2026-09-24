@@ -8,7 +8,6 @@ Window {
     title: documentTitle ? "O'Mark — " + documentTitle : "o-mark"
     color: colors.background
 
-    property int viewerThemeIndex: initialViewerThemeIndex
     property string toolbarPosition: toolbarPositionConfig
     property bool toolbarVisible: toolbarVisibleConfig
     property string pageOrientation: pageOrientationConfig
@@ -117,7 +116,6 @@ Window {
             y: root.toolbarPosition === "top" && root.toolbarVisible ? container._chrome : 0
             height: root.toolbarVisible ? parent.height - container._chrome : parent.height
             colors: colors
-            viewerThemeIndex: root.viewerThemeIndex
             zoomDefault: zoomDefaultConfig
             onSearchResultsChanged: function(count, current) { toolbar.setSearchResult(count, current) }
             onPdfFinished: function(success) {
@@ -145,7 +143,7 @@ Window {
             visible: root.toolbarVisible
             colors: colors
             zoomFactor: viewer.zoomFactor
-            onViewerThemeChanged: function(index) { root.viewerThemeIndex = index }
+            onTreatmentChosen: function(index) { treatmentControl.select = index }
             onResetZoomRequested: viewer.resetZoom()
             onSearchRequested: function(query, caseSensitive) { viewer.searchDocument(query, caseSensitive) }
             onSearchNextRequested: viewer.searchNext()

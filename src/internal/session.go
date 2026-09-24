@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"log"
+	"strings"
 )
 
 // PaletteSource is the live Omarchy palette the session renders and prints
@@ -11,6 +12,8 @@ import (
 type PaletteSource interface {
 	Palette() ThemePalette
 	PrintPalette() ThemePalette
+	// SetTreatment chooses the treatment Palette reads through.
+	SetTreatment(index int)
 }
 
 // StateSink is the Qt seam: the only place the session writes context
@@ -47,27 +50,28 @@ type LayoutState struct {
 }
 
 // IdentityState is the startup-only identity. Apply never populates it, so a
-// refresh can never rebuild the theme combo model or reset its index.
+// refresh can never rebuild the treatment combo model or reset its index.
 type IdentityState struct {
-	DocumentTitle           string // "documentTitle"
-	DocDir                  string // "docDir"
-	InitialAnchor           string // "initialAnchor"
-	ViewerThemeLabelsJSON   string // "viewerThemeLabelsJson"
-	InitialViewerThemeIndex int    // "initialViewerThemeIndex"
+	DocumentTitle         string // "documentTitle"
+	DocDir                string // "docDir"
+	InitialAnchor         string // "initialAnchor"
+	TreatmentLabelsJSON   string // "treatmentLabelsJson"
+	InitialTreatmentIndex int    // "initialTreatmentIndex"
 }
 
-// DocumentState carries the rendered document. ViewerThemesJSON is the only
+// DocumentState carries the rendered document. DocumentHTML is the only
 // property with a side effect: its QML binding reloads the page, so Publish
 // writes it after the chrome it paints against is already current.
 type DocumentState struct {
-	ViewerThemesJSON string // "viewerThemesJson"
-	PostLoadScripts  string // "postLoadScripts"
-	DocReloadSignal  int    // "docReloadSignal"
+	DocumentBg      string // "documentBg", the page background under the chrome
+	DocumentHTML    string // "documentHtml"
+	PostLoadScripts string // "postLoadScripts"
+	DocReloadSignal int    // "docReloadSignal"
 }
 
 // Publish writes each non-nil group. The order is load-bearing: Chrome and
 // Layout repaint, Identity sets the startup index and labels, and Document
-// ends with viewerThemesJson, whose binding reloads the document.
+// ends with documentHtml, whose binding reloads the document.
 func (s State) Publish(to StateSink) {
 	if s.Chrome != nil {
 		to.SetString("omarchyPaletteJson", s.Chrome.OmarchyPaletteJSON)
@@ -84,11 +88,12 @@ func (s State) Publish(to StateSink) {
 		to.SetString("documentTitle", s.Identity.DocumentTitle)
 		to.SetString("docDir", s.Identity.DocDir)
 		to.SetString("initialAnchor", s.Identity.InitialAnchor)
-		to.SetString("viewerThemeLabelsJson", s.Identity.ViewerThemeLabelsJSON)
-		to.SetInt("initialViewerThemeIndex", s.Identity.InitialViewerThemeIndex)
+		to.SetString("treatmentLabelsJson", s.Identity.TreatmentLabelsJSON)
+		to.SetInt("initialTreatmentIndex", s.Identity.InitialTreatmentIndex)
 	}
 	if s.Document != nil {
-		to.SetString("viewerThemesJson", s.Document.ViewerThemesJSON)
+		to.SetString("documentBg", s.Document.DocumentBg)
+		to.SetString("documentHtml", s.Document.DocumentHTML)
 		to.SetString("postLoadScripts", s.Document.PostLoadScripts)
 		to.SetInt("docReloadSignal", s.Document.DocReloadSignal)
 	}
@@ -111,10 +116,13 @@ type DocumentSaved struct{}
 // landscape.
 type OrientationToggled struct{}
 
+// TreatmentChosen reports the user picked the treatment at Index of the list
+// the library names.
+type TreatmentChosen struct{ Index int }
+
 // Persist carries the UI's final selection to disk and publishes nothing.
 type Persist struct {
-	ViewerThemeIndex int
-	ToolbarVisible   bool
+	ToolbarVisible bool
 }
 
 func (ThemeChanged) isChange()       {}
@@ -122,24 +130,23 @@ func (ConfigChanged) isChange()      {}
 func (DocumentSaved) isChange()      {}
 func (Persist) isChange()            {}
 func (OrientationToggled) isChange() {}
+func (TreatmentChosen) isChange()    {}
 
 // SessionOptions is the startup state main hands the session.
 type SessionOptions struct {
-	AbsPath    string
-	DocDir     string
-	Title      string
-	Anchor     string
-	Config     Config
-	ThemesDir  string
-	DiskThemes []ViewerTheme
-	Palette    PaletteSource
+	AbsPath string
+	DocDir  string
+	Title   string
+	Anchor  string
+	Config  Config
+	Palette PaletteSource
 	// DefaultConfig is the embedded config.toml, used to complete the user's
 	// file on quit.
 	DefaultConfig []byte
 }
 
-// Session owns one open document: its raw text, config, palette, font, theme
-// list, and reload counter. It recomputes and publishes UI state; it holds no
+// Session owns one open document: its raw text, config, palette, font,
+// treatment, and reload counter. It recomputes and publishes UI state; it holds no
 // Qt types, so it runs on the GUI thread only because its callers do.
 type Session struct {
 	absPath     string
@@ -148,8 +155,6 @@ type Session struct {
 	title       string
 	anchor      string
 	cfg         Config
-	themesDir   string
-	diskThemes  []ViewerTheme
 	paletteSrc  PaletteSource
 	defaultTOML []byte
 	// orientationOverride is the orientation the user picked with Ctrl+R: a view
@@ -158,7 +163,10 @@ type Session struct {
 
 	palette ThemePalette
 	font    string
-	reloads int
+	// treatment is the index, in the library's list, of the treatment the palette
+	// is read through.
+	treatment int
+	reloads   int
 }
 
 // StartSession reads the document and returns the full startup State. It
@@ -176,15 +184,16 @@ func StartSession(o SessionOptions) (*Session, State, error) {
 		title:       o.Title,
 		anchor:      o.Anchor,
 		cfg:         o.Config,
-		themesDir:   o.ThemesDir,
-		diskThemes:  o.DiskThemes,
 		paletteSrc:  o.Palette,
 		defaultTOML: o.DefaultConfig,
+	}
+	if s.paletteSrc != nil {
+		s.treatment, _ = TreatmentIndex(s.cfg.ViewerTreatment)
+		s.paletteSrc.SetTreatment(s.treatment)
 	}
 	s.palette = s.readPalette()
 	s.font = ReadOmarchyFont()
 
-	all := allThemes(s.diskThemes)
 	state := State{
 		Chrome: &ChromeState{
 			OmarchyPaletteJSON: paletteJSON(s.palette),
@@ -192,11 +201,11 @@ func StartSession(o SessionOptions) (*Session, State, error) {
 		},
 		Layout: s.layout(),
 		Identity: &IdentityState{
-			DocumentTitle:           s.title,
-			DocDir:                  s.docDir,
-			InitialAnchor:           s.anchor,
-			ViewerThemeLabelsJSON:   ViewerThemeLabelsJSON(all),
-			InitialViewerThemeIndex: themeIndex(all, s.cfg.ViewerTheme),
+			DocumentTitle:         s.title,
+			DocDir:                s.docDir,
+			InitialAnchor:         s.anchor,
+			TreatmentLabelsJSON:   s.treatmentLabelsJSON(),
+			InitialTreatmentIndex: s.treatment,
 		},
 		Document: s.documentState(),
 	}
@@ -246,9 +255,7 @@ func (s *Session) Apply(c Change) State {
 			Document: s.documentState(),
 		}
 	case ConfigChanged:
-		cfg := LoadConfig()
-		cfg.ViewerTheme = s.cfg.ViewerTheme // a config edit never yanks the session theme
-		s.cfg = cfg
+		s.cfg = LoadConfig() // a config edit never yanks the session treatment, held apart from it
 		return State{Layout: s.layout(), Document: s.documentState()}
 	case OrientationToggled:
 		if sheetOrientation(s.effective().PageOrientation) == OrientationLandscape {
@@ -266,11 +273,24 @@ func (s *Session) Apply(c Change) State {
 		s.raw = raw
 		s.reloads++
 		return State{Layout: s.layout(), Document: s.documentState()}
+	case TreatmentChosen:
+		if s.paletteSrc == nil || ch.Index == s.treatment || ch.Index < 0 || ch.Index >= len(TreatmentNames()) {
+			return State{}
+		}
+		s.treatment = ch.Index
+		s.paletteSrc.SetTreatment(s.treatment)
+		s.palette = s.readPalette()
+		return State{
+			Chrome: &ChromeState{
+				OmarchyPaletteJSON: paletteJSON(s.palette),
+				OmarchyFont:        s.font,
+			},
+			Document: s.documentState(),
+		}
 	case Persist:
-		all := allThemes(s.diskThemes)
 		cfg := s.cfg
-		if ch.ViewerThemeIndex >= 0 && ch.ViewerThemeIndex < len(all) {
-			cfg.ViewerTheme = all[ch.ViewerThemeIndex].ID
+		if names := TreatmentNames(); s.treatment >= 0 && s.treatment < len(names) {
+			cfg.ViewerTreatment = strings.ToLower(names[s.treatment])
 		}
 		v := ch.ToolbarVisible
 		cfg.ToolbarVisible = &v
@@ -284,7 +304,7 @@ func (s *Session) Apply(c Change) State {
 // PreparePdf renders the print document against the session's current raw
 // text, font, and config, and the same palette source used for the screen.
 func (s *Session) PreparePdf() PdfExport {
-	return PreparePdfExport(s.absPath, s.raw, s.docDir, s.font, s.effective(), s.paletteSrc)
+	return PreparePdfExport(s.absPath, s.raw, s.docDir, s.documentFont(), s.effective(), s.paletteSrc)
 }
 
 // readPalette resolves the live palette, falling back to the built-in one when
@@ -296,17 +316,42 @@ func (s *Session) readPalette() ThemePalette {
 	return GetThemePalette("omarchy")
 }
 
-// documentState renders the document for every theme from the session's
-// current raw text, palette, font, and config.
+// documentFont is the font of the document: the config's, or the Omarchy mono
+// font when the config leaves it at "mono".
+func (s *Session) documentFont() string {
+	if s.cfg.Font == "" || s.cfg.Font == MonoFont {
+		return s.font
+	}
+	return s.cfg.Font
+}
+
+// treatmentLabelsJSON is the model of the treatment selector. Without a live
+// palette source a treatment changes nothing, so the list is empty and the
+// selector stays hidden.
+func (s *Session) treatmentLabelsJSON() string {
+	names := []string{}
+	if s.paletteSrc != nil {
+		names = TreatmentNames()
+	}
+	b, err := json.Marshal(names)
+	if err != nil {
+		log.Printf("session: cannot marshal treatment labels: %v", err)
+	}
+	return string(b)
+}
+
+// documentState renders the document from the session's current raw text,
+// palette, font, and config.
 func (s *Session) documentState() *DocumentState {
 	scripts, err := json.Marshal(PostLoadScripts(s.raw))
 	if err != nil {
 		log.Printf("session: cannot marshal post-load scripts: %v", err)
 	}
 	return &DocumentState{
-		ViewerThemesJSON: RenderViewerThemesJSON(s.raw, s.palette, s.docDir, s.diskThemes, s.themesDir, s.effective(), s.font),
-		PostLoadScripts:  string(scripts),
-		DocReloadSignal:  s.reloads,
+		DocumentBg:      s.palette.Background,
+		DocumentHTML:    RenderMarkdownWithPalette(s.raw, s.palette, s.docDir, s.documentFont(), s.effective()),
+		PostLoadScripts: string(scripts),
+		DocReloadSignal: s.reloads,
 	}
 }
 
@@ -325,23 +370,6 @@ func toolbarVisible(cfg Config) bool {
 		return false
 	}
 	return *cfg.ToolbarVisible
-}
-
-// allThemes returns the full ordered theme list: system first, then disk themes.
-func allThemes(diskThemes []ViewerTheme) []ViewerTheme {
-	all := make([]ViewerTheme, 0, 1+len(diskThemes))
-	all = append(all, ViewerTheme{ID: "system", Label: "System"})
-	return append(all, diskThemes...)
-}
-
-// themeIndex returns the index of themeID in all, defaulting to 0.
-func themeIndex(all []ViewerTheme, themeID string) int {
-	for i, t := range all {
-		if t.ID == themeID {
-			return i
-		}
-	}
-	return 0
 }
 
 // paletteJSON serializes the palette main passes to QML as context data.

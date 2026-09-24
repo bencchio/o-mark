@@ -55,7 +55,7 @@ func TestPostLoadScriptsForCodeDocument(t *testing.T) {
 // The shared highlight stylesheet must come after the theme so its wrap rule
 // wins over the pre/code rules every theme defines.
 func TestHighlightCSSFollowsTheme(t *testing.T) {
-	html := RenderMarkdownWithCSS(readExample(t, "code/code.md"), ThemeCSS("github"), ".")
+	html := RenderMarkdownWithCSS(readExample(t, "code/code.md"), paletteCSS(builtinPalette(false), "monospace"), ".")
 
 	// Without this rule the gutter renders empty: the plugin emits the number
 	// in a data attribute, not as text.
@@ -69,7 +69,7 @@ func TestHighlightCSSFollowsTheme(t *testing.T) {
 		}
 	}
 
-	themeVars := strings.Index(html, "--o-mark-hl-keyword: #cf222e")
+	themeVars := strings.Index(html, "--o-mark-hl-keyword:")
 	sharedRules := strings.Index(html, "var(--o-mark-hl-keyword")
 	if themeVars < 0 || sharedRules < 0 || themeVars > sharedRules {
 		t.Error("shared highlight CSS must be appended after the theme CSS")

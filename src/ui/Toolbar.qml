@@ -14,7 +14,7 @@ Rectangle {
     property int searchCurrent: 0
     property bool searchCaseSensitive: false
 
-    signal viewerThemeChanged(int index)
+    signal treatmentChosen(int index)
     signal resetZoomRequested()
     signal searchRequested(string query, bool caseSensitive)
     signal searchNextRequested()
@@ -82,7 +82,7 @@ Rectangle {
         else toolbarRoot.forceActiveFocus()
     }
 
-    // T → focus theme ComboBox, Z → focus zoom reset ↺.
+    // T → focus treatment ComboBox, Z → focus zoom reset ↺.
     // ← / → navigate between toolbar elements; Enter/Space activate ↺, PDF or the orientation.
     // Events from ComboBox propagate here when ComboBox doesn't handle them.
     Keys.onPressed: function(event) {
@@ -294,9 +294,10 @@ Rectangle {
         ComboBox {
             id: comboBox
             focusPolicy: Qt.NoFocus
-            model: { try { return JSON.parse(viewerThemeLabelsJson) } catch(e) { return [] } }
-            Component.onCompleted: currentIndex = initialViewerThemeIndex
-            onCurrentIndexChanged: toolbarRoot.viewerThemeChanged(currentIndex)
+            model: { try { return JSON.parse(treatmentLabelsJson) } catch(e) { return [] } }
+            visible: count > 0
+            Component.onCompleted: currentIndex = initialTreatmentIndex
+            onCurrentIndexChanged: toolbarRoot.treatmentChosen(currentIndex)
             font.family: omarchyFont
             font.pixelSize: 11
             implicitHeight: 24

@@ -43,12 +43,14 @@ func (r *sessionRecorder) index(key string) int {
 
 // fakePalette is a PaletteSource with scripted screen and print palettes.
 type fakePalette struct {
-	current ThemePalette
-	print   ThemePalette
+	current   ThemePalette
+	print     ThemePalette
+	treatment int
 }
 
 func (f *fakePalette) Palette() ThemePalette      { return f.current }
 func (f *fakePalette) PrintPalette() ThemePalette { return f.print }
+func (f *fakePalette) SetTreatment(index int)     { f.treatment = index }
 
 func sessionPalette(bg string) ThemePalette {
 	return ThemePalette{
@@ -59,9 +61,9 @@ func sessionPalette(bg string) ThemePalette {
 	}
 }
 
-func sessionConfig(theme string) Config {
+func sessionConfig(treatment string) Config {
 	v := false
-	return Config{ViewerTheme: theme, ToolbarPosition: "bottom", ToolbarVisible: &v}
+	return Config{ViewerTreatment: treatment, ToolbarPosition: "bottom", ToolbarVisible: &v}
 }
 
 func isolateHome(t *testing.T) {
@@ -79,11 +81,11 @@ func writeSessionDoc(t *testing.T, content string) string {
 	return p
 }
 
-func newSession(t *testing.T, doc string, cfg Config, diskThemes []ViewerTheme, p PaletteSource) *Session {
+func newSession(t *testing.T, doc string, cfg Config, p PaletteSource) *Session {
 	t.Helper()
 	s, _, err := StartSession(SessionOptions{
 		AbsPath: doc, DocDir: filepath.Dir(doc), Title: "doc.md",
-		Config: cfg, DiskThemes: diskThemes, Palette: p,
+		Config: cfg, Palette: p,
 	})
 	if err != nil {
 		t.Fatalf("StartSession: %v", err)
@@ -96,7 +98,7 @@ func TestSessionStartupPublishesChromeBeforeDocument(t *testing.T) {
 	doc := writeSessionDoc(t, "# Hi\n")
 	_, state, err := StartSession(SessionOptions{
 		AbsPath: doc, DocDir: filepath.Dir(doc), Title: "doc.md",
-		Config:  sessionConfig("github"),
+		Config:  sessionConfig("original"),
 		Palette: &fakePalette{current: sessionPalette("#101010")},
 	})
 	if err != nil {
@@ -106,42 +108,103 @@ func TestSessionStartupPublishesChromeBeforeDocument(t *testing.T) {
 	r := &sessionRecorder{}
 	state.Publish(r)
 
-	docAt := r.index("viewerThemesJson")
+	docAt := r.index("documentHtml")
 	if docAt < 0 {
-		t.Fatal("viewerThemesJson was not published")
+		t.Fatal("documentHtml was not published")
 	}
-	for _, key := range []string{"omarchyPaletteJson", "omarchyFont", "initialViewerThemeIndex", "viewerThemeLabelsJson"} {
+	for _, key := range []string{"omarchyPaletteJson", "omarchyFont", "initialTreatmentIndex", "treatmentLabelsJson", "documentBg"} {
 		at := r.index(key)
 		if at < 0 {
 			t.Fatalf("%s was not published", key)
 		}
 		if at > docAt {
-			t.Errorf("%s published after viewerThemesJson", key)
+			t.Errorf("%s published after documentHtml", key)
 		}
 	}
 }
 
-func TestSessionStartupIndexFollowsConfiguredTheme(t *testing.T) {
+func TestSessionStartupTreatmentFollowsTheConfig(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# Hi\n")
+	fp := &fakePalette{current: sessionPalette("#101010")}
 	_, state, err := StartSession(SessionOptions{
 		AbsPath: doc, DocDir: filepath.Dir(doc), Title: "doc.md",
-		Config:     sessionConfig("github"),
-		DiskThemes: []ViewerTheme{{ID: "github", Label: "GitHub"}},
-		Palette:    &fakePalette{current: sessionPalette("#101010")},
+		Config:  sessionConfig("Inverted"),
+		Palette: fp,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Identity == nil || state.Identity.InitialViewerThemeIndex != 1 {
-		t.Fatalf("index: got %+v, want 1", state.Identity)
+	want, _ := TreatmentIndex("inverted")
+	if state.Identity == nil || state.Identity.InitialTreatmentIndex != want {
+		t.Fatalf("index: got %+v, want %d", state.Identity, want)
+	}
+	if fp.treatment != want {
+		t.Errorf("the palette source was not set to the treatment: %d", fp.treatment)
+	}
+}
+
+func TestSessionUnknownTreatmentIsOriginal(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, "# Hi\n")
+	_, state, err := StartSession(SessionOptions{
+		AbsPath: doc, DocDir: filepath.Dir(doc), Title: "doc.md",
+		Config:  sessionConfig("sepia-that-does-not-exist"),
+		Palette: &fakePalette{current: sessionPalette("#101010")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Identity.InitialTreatmentIndex != 0 {
+		t.Errorf("got %d, want Original (0)", state.Identity.InitialTreatmentIndex)
+	}
+}
+
+func TestSessionWithoutAPaletteSourceOffersNoTreatments(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, "# Hi\n")
+	s, state, err := StartSession(SessionOptions{AbsPath: doc, DocDir: filepath.Dir(doc), Title: "doc.md", Config: sessionConfig("original")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Identity.TreatmentLabelsJSON != "[]" {
+		t.Errorf("labels: %s", state.Identity.TreatmentLabelsJSON)
+	}
+	if got := s.Apply(TreatmentChosen{Index: 1}); got.Chrome != nil || got.Document != nil {
+		t.Errorf("a treatment without a palette source changes nothing, got %+v", got)
+	}
+}
+
+func TestSessionTreatmentChoiceRepaintsChromeAndDocument(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, "# Hi\n")
+	fp := &fakePalette{current: sessionPalette("#101010")}
+	s := newSession(t, doc, sessionConfig("original"), fp)
+
+	inverted, _ := TreatmentIndex("inverted")
+	fp.current = sessionPalette("#f0f0f0")
+	got := s.Apply(TreatmentChosen{Index: inverted})
+	if got.Chrome == nil || got.Document == nil {
+		t.Fatalf("a chosen treatment must repaint the chrome and the document, got %+v", got)
+	}
+	if fp.treatment != inverted {
+		t.Errorf("the palette source was not told: %d", fp.treatment)
+	}
+	if !strings.Contains(got.Document.DocumentHTML, "#f0f0f0") || got.Document.DocumentBg != "#f0f0f0" {
+		t.Error("the document was not rendered from the new palette")
+	}
+	if again := s.Apply(TreatmentChosen{Index: inverted}); again.Chrome != nil || again.Document != nil {
+		t.Errorf("choosing the current treatment publishes nothing, got %+v", again)
+	}
+	if bad := s.Apply(TreatmentChosen{Index: 99}); bad.Chrome != nil || bad.Document != nil {
+		t.Errorf("an out-of-range index publishes nothing, got %+v", bad)
 	}
 }
 
 func TestSessionThemeUnchangedPublishesNothing(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# Hi\n")
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 
 	got := s.Apply(ThemeChanged{})
 	if got.Chrome != nil || got.Layout != nil || got.Identity != nil || got.Document != nil {
@@ -153,7 +216,7 @@ func TestSessionThemeChangeRendersFromNewPalette(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# Hi\n")
 	fp := &fakePalette{current: sessionPalette("#101010")}
-	s := newSession(t, doc, sessionConfig("github"), nil, fp)
+	s := newSession(t, doc, sessionConfig("original"), fp)
 
 	fp.current = sessionPalette("#202020")
 	got := s.Apply(ThemeChanged{})
@@ -163,7 +226,7 @@ func TestSessionThemeChangeRendersFromNewPalette(t *testing.T) {
 	if !strings.Contains(got.Chrome.OmarchyPaletteJSON, "#202020") {
 		t.Error("chrome palette was not updated")
 	}
-	if !strings.Contains(got.Document.ViewerThemesJSON, "#202020") {
+	if !strings.Contains(got.Document.DocumentHTML, "#202020") {
 		t.Error("document was not rendered from the new palette")
 	}
 }
@@ -182,11 +245,11 @@ func TestSessionConfigReloadPreservesTheme(t *testing.T) {
 	}
 
 	doc := writeSessionDoc(t, "# Hi\n")
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 
 	got := s.Apply(ConfigChanged{})
-	if s.cfg.ViewerTheme != "github" {
-		t.Errorf("a config reload changed the session theme to %q", s.cfg.ViewerTheme)
+	if s.treatment != 0 {
+		t.Errorf("a config reload changed the session treatment to %d", s.treatment)
 	}
 	if got.Layout == nil || got.Layout.ToolbarPosition != "top" {
 		t.Errorf("layout was not reloaded: %+v", got.Layout)
@@ -196,7 +259,7 @@ func TestSessionConfigReloadPreservesTheme(t *testing.T) {
 func TestSessionDocumentReloadBumpsSignal(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# One\n")
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 
 	if err := os.WriteFile(doc, []byte("# Two\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -205,7 +268,7 @@ func TestSessionDocumentReloadBumpsSignal(t *testing.T) {
 	if got.Document == nil || got.Document.DocReloadSignal != 1 {
 		t.Fatalf("signal: got %+v, want 1", got.Document)
 	}
-	if !strings.Contains(got.Document.ViewerThemesJSON, "Two") {
+	if !strings.Contains(got.Document.DocumentHTML, "Two") {
 		t.Error("document was not re-rendered from the new content")
 	}
 }
@@ -213,7 +276,7 @@ func TestSessionDocumentReloadBumpsSignal(t *testing.T) {
 func TestSessionDocumentReloadSurvivesUnreadableFile(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# One\n")
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 
 	if err := os.Remove(doc); err != nil {
 		t.Fatal(err)
@@ -232,9 +295,11 @@ func TestSessionPersistWritesSelection(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv(OmarchyStateEnv, "")
 	doc := writeSessionDoc(t, "# Hi\n")
-	s := newSession(t, doc, sessionConfig("github"), []ViewerTheme{{ID: "github", Label: "GitHub"}}, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
+	highContrast, _ := TreatmentIndex("highcontrast")
+	s.Apply(TreatmentChosen{Index: highContrast})
 
-	got := s.Apply(Persist{ViewerThemeIndex: 1, ToolbarVisible: true})
+	got := s.Apply(Persist{ToolbarVisible: true})
 	if got.Chrome != nil || got.Layout != nil || got.Identity != nil || got.Document != nil {
 		t.Errorf("Persist must publish nothing, got %+v", got)
 	}
@@ -243,11 +308,27 @@ func TestSessionPersistWritesSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config was not written: %v", err)
 	}
-	if !strings.Contains(string(body), `viewer_theme = "github"`) {
-		t.Errorf("selected theme was not persisted:\n%s", body)
+	if !strings.Contains(string(body), `viewer_treatment = "highcontrast"`) {
+		t.Errorf("selected treatment was not persisted:\n%s", body)
 	}
 	if !strings.Contains(string(body), "toolbar_visible = true") {
 		t.Errorf("toolbar visibility was not persisted:\n%s", body)
+	}
+}
+
+func TestSessionDocumentUsesTheConfiguredFont(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, "# Hi\n")
+	cfg := sessionConfig("original")
+	cfg.Font = "Liberation Serif, serif"
+	s := newSession(t, doc, cfg, &fakePalette{current: sessionPalette("#101010")})
+	if !strings.Contains(s.documentState().DocumentHTML, "--o-mark-font: Liberation Serif, serif;") {
+		t.Error("the config font did not reach the document")
+	}
+	cfg.Font = MonoFont
+	s = newSession(t, doc, cfg, &fakePalette{current: sessionPalette("#101010")})
+	if !strings.Contains(s.documentState().DocumentHTML, "--o-mark-font: "+s.font+";") {
+		t.Error("mono must resolve to the Omarchy font")
 	}
 }
 
@@ -255,7 +336,7 @@ func TestSessionPreparePdfUsesPaletteSource(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# Hi\n")
 	fp := &fakePalette{current: sessionPalette("#101010"), print: sessionPalette("#ffffff")}
-	s := newSession(t, doc, sessionConfig("github"), nil, fp)
+	s := newSession(t, doc, sessionConfig("original"), fp)
 
 	out := s.PreparePdf()
 	if out.Exists {
@@ -276,7 +357,7 @@ func TestSessionPreparePdfUsesPaletteSource(t *testing.T) {
 
 func TestSessionStartupPublishesPageOrientation(t *testing.T) {
 	isolateHome(t)
-	cfg := sessionConfig("github")
+	cfg := sessionConfig("original")
 	cfg.PageOrientation = "landscape"
 	s, state, err := StartSession(SessionOptions{
 		AbsPath: writeSessionDoc(t, "# Hi\n"), Title: "doc.md", Config: cfg,
@@ -293,13 +374,13 @@ func TestSessionStartupPublishesPageOrientation(t *testing.T) {
 func TestSessionOrientationToggleRerendersTheSheet(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# Hi\n")
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 
 	got := s.Apply(OrientationToggled{})
 	if got.Layout == nil || got.Layout.PageOrientation != "landscape" || got.Document == nil {
 		t.Fatalf("first toggle: %+v", got)
 	}
-	if !strings.Contains(got.Document.ViewerThemesJSON, "--o-mark-page-width: 297mm") {
+	if !strings.Contains(got.Document.DocumentHTML, "--o-mark-page-width: 297mm") {
 		t.Error("the re-rendered document does not carry the landscape sheet")
 	}
 	if back := s.Apply(OrientationToggled{}); back.Layout.PageOrientation != "portrait" {
@@ -318,7 +399,7 @@ func TestSessionConfigReloadPreservesOrientation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("page_orientation = \"portrait\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 	s.Apply(OrientationToggled{})
 
 	got := s.Apply(ConfigChanged{})
@@ -341,7 +422,7 @@ func TestSessionPersistLeavesTheOrientationDefault(t *testing.T) {
 	if err := os.WriteFile(p, []byte("page_orientation = \"portrait\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 	s.Apply(OrientationToggled{})
 	s.Apply(Persist{})
 
@@ -356,7 +437,7 @@ func TestSessionPersistLeavesTheOrientationDefault(t *testing.T) {
 
 func TestSessionPreparePdfCarriesOrientation(t *testing.T) {
 	isolateHome(t)
-	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010"), print: sessionPalette("#ffffff")})
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("original"), &fakePalette{current: sessionPalette("#101010"), print: sessionPalette("#ffffff")})
 	if got := s.PreparePdf().Orientation; got != "portrait" {
 		t.Errorf("default orientation: %q", got)
 	}
@@ -370,7 +451,7 @@ const declaredDoc = "---\npage_format: a5\npage_orientation: landscape\n---\n# H
 
 func TestSessionDocumentDeclaresItsSheet(t *testing.T) {
 	isolateHome(t)
-	s := newSession(t, writeSessionDoc(t, declaredDoc), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, writeSessionDoc(t, declaredDoc), sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 	got := s.layout()
 	if got.PageOrientation != "landscape" {
 		t.Errorf("layout orientation: %q", got.PageOrientation)
@@ -379,7 +460,7 @@ func TestSessionDocumentDeclaresItsSheet(t *testing.T) {
 	if pdf.Format != "a5" || pdf.Orientation != "landscape" {
 		t.Errorf("pdf sheet: %q %q", pdf.Format, pdf.Orientation)
 	}
-	doc := s.documentState().ViewerThemesJSON
+	doc := s.documentState().DocumentHTML
 	if !strings.Contains(doc, "--o-mark-page-width: 210mm") || !strings.Contains(doc, "--o-mark-page-height: 148mm") {
 		t.Error("the screen render does not carry the A5 landscape sheet")
 	}
@@ -389,7 +470,7 @@ func TestSessionDocumentDeclaresItsSheet(t *testing.T) {
 // session, and never touches the defaults.
 func TestSessionOverrideWinsOverTheDeclaration(t *testing.T) {
 	isolateHome(t)
-	s := newSession(t, writeSessionDoc(t, declaredDoc), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, writeSessionDoc(t, declaredDoc), sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 	got := s.Apply(OrientationToggled{})
 	if got.Layout.PageOrientation != "portrait" {
 		t.Errorf("a flip from the declared landscape should be portrait, got %q", got.Layout.PageOrientation)
@@ -405,7 +486,7 @@ func TestSessionOverrideWinsOverTheDeclaration(t *testing.T) {
 func TestSessionOverrideSurvivesReloadsEvenWhenTheDeclarationChanges(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, declaredDoc)
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 	s.Apply(OrientationToggled{}) // portrait, over the declared landscape
 
 	if err := os.WriteFile(doc, []byte("---\npage_orientation: landscape\n---\n# Edited\n"), 0644); err != nil {
@@ -427,7 +508,7 @@ func TestSessionOverrideSurvivesReloadsEvenWhenTheDeclarationChanges(t *testing.
 func TestSessionReloadPublishesTheNewDeclaration(t *testing.T) {
 	isolateHome(t)
 	doc := writeSessionDoc(t, "# Hi\n")
-	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, doc, sessionConfig("original"), &fakePalette{current: sessionPalette("#101010")})
 	if err := os.WriteFile(doc, []byte(declaredDoc), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -450,7 +531,7 @@ func TestSessionConfigEditAppliesUntilTheUserFlips(t *testing.T) {
 		}
 	}
 	write("portrait")
-	s := newSession(t, writeSessionDoc(t, "# Hi\n"), LoadConfig(), nil, &fakePalette{current: sessionPalette("#101010")})
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), LoadConfig(), &fakePalette{current: sessionPalette("#101010")})
 
 	write("landscape")
 	if got := s.Apply(ConfigChanged{}); got.Layout.PageOrientation != "landscape" {
@@ -465,12 +546,12 @@ func TestSessionConfigEditAppliesUntilTheUserFlips(t *testing.T) {
 
 func TestSessionLayoutCarriesTheZoomDefault(t *testing.T) {
 	isolateHome(t)
-	cfg := sessionConfig("github")
-	if got := newSession(t, writeSessionDoc(t, "# Hi\n"), cfg, nil, &fakePalette{current: sessionPalette("#101010")}).layout().ZoomDefault; got != 1.0 {
+	cfg := sessionConfig("original")
+	if got := newSession(t, writeSessionDoc(t, "# Hi\n"), cfg, &fakePalette{current: sessionPalette("#101010")}).layout().ZoomDefault; got != 1.0 {
 		t.Errorf("a config that sets none is 100 %%, got %v", got)
 	}
 	cfg.ZoomDefault = 1.2
-	if got := newSession(t, writeSessionDoc(t, "# Hi\n"), cfg, nil, &fakePalette{current: sessionPalette("#101010")}).layout().ZoomDefault; got != 1.2 {
+	if got := newSession(t, writeSessionDoc(t, "# Hi\n"), cfg, &fakePalette{current: sessionPalette("#101010")}).layout().ZoomDefault; got != 1.2 {
 		t.Errorf("got %v, want 1.2", got)
 	}
 }

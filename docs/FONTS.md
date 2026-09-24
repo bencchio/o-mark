@@ -1,6 +1,6 @@
 # Fonts
 
-These fonts are recommended for the best visual experience with O'Mark themes.
+These fonts are recommended for the best visual experience with O'Mark.
 Without them, the viewer falls back to Liberation, DejaVu, and Noto fonts,
 which are available on most Linux distributions.
 
@@ -16,17 +16,19 @@ sudo pacman -S inter-font ttf-jetbrains-mono tex-gyre-fonts adobe-source-serif-f
 sudo apt install fonts-inter fonts-source-serif-4 fonts-jetbrains-mono tex-gyre-fonts
 ```
 
-## Per-theme font requirements
+## Choosing the font
 
-| Theme   | Primary font     | Package (Arch)        | Package (Ubuntu)       |
-| ------- | ---------------- | --------------------- | ---------------------- |
-| github  | Inter            | `inter-font`          | `fonts-inter`          |
-| night   | Inter            | — (same as above)     | —                      |
-| minimal | Inter            | — (same as above)     | —                      |
-| writer  | Liberation Serif | (bundled with system) | (bundled with system)  |
-| sepia   | Liberation Serif | (bundled with system) | (bundled with system)  |
-| mono    | JetBrains Mono   | `ttf-jetbrains-mono`  | `fonts-jetbrains-mono` |
+The `font` key of `config.toml` sets the font of the document: `"mono"` (the
+default) is the Omarchy mono font, and any CSS font stack works.
 
-**Note:** Liberation Serif is included in `libreoffice` or `liberation-fonts`.
-It is typically already installed on most Linux systems. Both `writer` and
-`sepia` rely on it as their primary font.
+| `font` | Package (Arch) | Package (Ubuntu) |
+| ------ | -------------- | ---------------- |
+| `"mono"` | whatever font your Omarchy theme uses | — |
+| `"Inter, sans-serif"` | `inter-font` | `fonts-inter` |
+| `"JetBrains Mono, monospace"` | `ttf-jetbrains-mono` | `fonts-jetbrains-mono` |
+| `"Liberation Serif, serif"` | `liberation-fonts` | bundled with the system |
+
+Liberation Serif is included in `libreoffice` or `liberation-fonts`, and it is
+typically already installed on most Linux systems. If none of the fonts in your
+stack is installed, O'Mark logs a warning and the browser falls back to its own
+default.
