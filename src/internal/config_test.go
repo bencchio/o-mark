@@ -74,7 +74,7 @@ func TestSaveConfigPreservesComments(t *testing.T) {
 	}
 
 	visible := true
-	SaveConfig(Config{ViewerTheme: "night", ToolbarVisible: &visible})
+	SaveConfig(Config{ViewerTheme: "night", ToolbarVisible: &visible}, nil)
 
 	got, err := os.ReadFile(p)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestSaveConfigWritesWholeFileWhenMissing(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	SaveConfig(Config{ViewerTheme: "sepia"})
+	SaveConfig(Config{ViewerTheme: "sepia"}, nil)
 
 	got, err := os.ReadFile(filepath.Join(home, ".config", "o-mark", "config.toml"))
 	if err != nil {
@@ -196,7 +196,7 @@ func TestConfigOverrideCSSPageSheet(t *testing.T) {
 	}
 }
 
-func TestSaveConfigWritesPageAndDropsWidth(t *testing.T) {
+func TestSaveConfigMigratesTheRetiredWidth(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := filepath.Join(home, ".config", "o-mark")
@@ -208,13 +208,13 @@ func TestSaveConfigWritesPageAndDropsWidth(t *testing.T) {
 	if err := os.WriteFile(p, []byte(seed), 0644); err != nil {
 		t.Fatal(err)
 	}
-	SaveConfig(Config{ViewerTheme: "night", PageOrientation: "landscape"})
+	SaveConfig(Config{ViewerTheme: "night"}, []byte(testDefaults+"\n# Orientation.\npage_orientation = \"portrait\"\n"))
 	got, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := string(got)
-	for _, want := range []string{"viewer_theme = \"night\"", "page_format = \"a4\"", "page_orientation = \"landscape\"", "# Theme.", "# Font.", "font_size_base = \"default\""} {
+	for _, want := range []string{"viewer_theme = \"night\"", "# Format.\n# a4 or a5.\npage_format = \"a4\"", "# Orientation.\npage_orientation = \"landscape\"", "# Theme.", "# Font.", "font_size_base = \"default\""} {
 		if !strings.Contains(out, want) {
 			t.Errorf("saved config is missing %q:\n%s", want, out)
 		}
@@ -233,5 +233,183 @@ func TestRemoveTOMLKey(t *testing.T) {
 	}
 	if got := removeTOMLKey("a = 1\n\n# about b\nb = 2\n\nc = 3\n", "b"); got != "a = 1\n\nc = 3\n" {
 		t.Errorf("removing b: got %q", got)
+	}
+}
+
+func TestLoadConfigPageFormats(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"a3", "a3"}, {"a4", "a4"}, {"a5", "a5"}, {"A5", "a5"}, {"letter", "a4"}, {"", "a4"},
+	}
+	for _, tc := range tests {
+		body := ""
+		if tc.in != "" {
+			body = "page_format = \"" + tc.in + "\"\n"
+		}
+		if got := loadConfigFrom(t, body).PageFormat; got != tc.want {
+			t.Errorf("page_format %q: got %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestPageSidesPerFormat(t *testing.T) {
+	tests := []struct{ format, orientation, w, h string }{
+		{"a3", "portrait", "297mm", "420mm"},
+		{"a3", "landscape", "420mm", "297mm"},
+		{"a4", "portrait", "210mm", "297mm"},
+		{"a5", "portrait", "148mm", "210mm"},
+		{"a5", "landscape", "210mm", "148mm"},
+		{"", "", "210mm", "297mm"},
+	}
+	for _, tc := range tests {
+		if w, h := pageSides(tc.format, tc.orientation); w != tc.w || h != tc.h {
+			t.Errorf("pageSides(%q, %q) = %s x %s, want %s x %s", tc.format, tc.orientation, w, h, tc.w, tc.h)
+		}
+	}
+}
+
+func TestLoadConfigPdfMargins(t *testing.T) {
+	def := loadConfigFrom(t, "")
+	if def.PdfMarginVertical != "25mm" || def.PdfMarginHorizontal != "10mm" {
+		t.Errorf("defaults: got %q %q", def.PdfMarginVertical, def.PdfMarginHorizontal)
+	}
+	set := loadConfigFrom(t, "pdf_margin_vertical = \"30mm\"\npdf_margin_horizontal = \"12.5mm\"\n")
+	if set.PdfMarginVertical != "30mm" || set.PdfMarginHorizontal != "12.5mm" {
+		t.Errorf("set: got %q %q", set.PdfMarginVertical, set.PdfMarginHorizontal)
+	}
+	for _, bad := range []string{"2cm", "25", "999mm", "-5mm", "auto"} {
+		got := loadConfigFrom(t, "pdf_margin_vertical = \""+bad+"\"\n")
+		if got.PdfMarginVertical != "25mm" {
+			t.Errorf("margin %q should fall back to 25mm, got %q", bad, got.PdfMarginVertical)
+		}
+	}
+}
+
+func TestLoadConfigZoomDefault(t *testing.T) {
+	tests := []struct {
+		body string
+		want float64
+	}{
+		{"", 1.0}, {"zoom_default = 1.2\n", 1.2}, {"zoom_default = 2\n", 2.0},
+		{"zoom_default = 5.0\n", 2.0}, {"zoom_default = 0.1\n", 0.5}, {"zoom_default = \"big\"\n", 1.0},
+	}
+	for _, tc := range tests {
+		if got := loadConfigFrom(t, tc.body).ZoomDefault; got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.body, got, tc.want)
+		}
+	}
+}
+
+// An integer font_size_base used to be accepted; now it is invalid, but it must
+// not take the rest of the file down with it.
+func TestLoadConfigIntegerFontSizeIsInvalidNotFatal(t *testing.T) {
+	cfg := loadConfigFrom(t, "font_size_base = 14\ntoolbar_position = \"top\"\npage_orientation = \"landscape\"\n")
+	if cfg.FontSizeBase != DeferToTheme {
+		t.Errorf("font_size_base: got %q, want the theme's size", cfg.FontSizeBase)
+	}
+	if cfg.ToolbarPosition != "top" || cfg.PageOrientation != "landscape" {
+		t.Errorf("the other keys were lost: %q %q", cfg.ToolbarPosition, cfg.PageOrientation)
+	}
+	if got := loadConfigFrom(t, "font_size_base = \"14\"\n").FontSizeBase; got != "14" {
+		t.Errorf("a quoted number is still valid, got %q", got)
+	}
+}
+
+func TestSaveConfigLeavesThePageKeysToTheUser(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	seed := "viewer_theme = \"github\"\npage_format = \"a5\"\npage_orientation = \"portrait\"\n"
+	if err := os.WriteFile(p, []byte(seed), 0644); err != nil {
+		t.Fatal(err)
+	}
+	SaveConfig(Config{ViewerTheme: "night", PageFormat: "a3", PageOrientation: "landscape"}, nil)
+	got, _ := os.ReadFile(p)
+	for _, want := range []string{"page_format = \"a5\"", "page_orientation = \"portrait\""} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("the session changed a default it must not write: missing %q in\n%s", want, got)
+		}
+	}
+}
+
+const testDefaults = "# Theme.\nviewer_theme = \"github\"\n\n# Format.\n# a4 or a5.\npage_format = \"a4\"\n\n# Zoom.\nzoom_default = 1.0\n"
+
+func TestCompleteMissingKeys(t *testing.T) {
+	body := "# My own note\nviewer_theme = \"night\"\n"
+	got := completeMissingKeys(body, testDefaults)
+	for _, want := range []string{"# My own note", "viewer_theme = \"night\"", "# Format.\n# a4 or a5.\npage_format = \"a4\"", "# Zoom.\nzoom_default = 1.0"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "viewer_theme") != 1 {
+		t.Errorf("a present key was duplicated:\n%s", got)
+	}
+	if again := completeMissingKeys(got, testDefaults); again != got {
+		t.Errorf("a second call must change nothing:\n%s", again)
+	}
+	if same := completeMissingKeys(testDefaults, testDefaults); same != testDefaults {
+		t.Errorf("a complete file must stay as it is:\n%s", same)
+	}
+}
+
+func TestSaveConfigCompletesAnOldFileOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte("# Mine.\nviewer_theme = \"github\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	SaveConfig(Config{ViewerTheme: "night"}, []byte(testDefaults))
+	first, _ := os.ReadFile(p)
+	SaveConfig(Config{ViewerTheme: "night"}, []byte(testDefaults))
+	second, _ := os.ReadFile(p)
+	if string(first) != string(second) {
+		t.Errorf("a second save changed the file:\n%s\n---\n%s", first, second)
+	}
+	if !strings.Contains(string(first), "# Mine.") || !strings.Contains(string(first), "zoom_default = 1.0") {
+		t.Errorf("own comment kept and missing key added, got:\n%s", first)
+	}
+}
+
+// The shipped default must document and set every key Config reads.
+func TestShippedConfigHasEveryKey(t *testing.T) {
+	data, err := os.ReadFile("../resources/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"viewer_theme", "page_format", "page_orientation", "pdf_margin_vertical", "pdf_margin_horizontal", "zoom_default", "font_size_base", "show_scrollbars", "code_line_numbers", "toolbar_position", "toolbar_visible"} {
+		if _, ok := tomlValue(string(data), key); !ok {
+			t.Errorf("the shipped config.toml does not set %q", key)
+		}
+	}
+	// Completing an empty file with it must yield a config that loads to the defaults.
+	if got := completeMissingKeys("", string(data)); !strings.Contains(got, "zoom_default = 1.0") {
+		t.Errorf("completing an empty file lost a key:\n%s", got)
+	}
+}
+
+func TestSaveConfigMigrationKeepsAnExistingOrientation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte("document_max_width = \"297mm\"\npage_orientation = \"portrait\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	SaveConfig(Config{ViewerTheme: "github"}, nil)
+	got, _ := os.ReadFile(p)
+	if !strings.Contains(string(got), `page_orientation = "portrait"`) || strings.Contains(string(got), "document_max_width") {
+		t.Errorf("the explicit orientation must stay and the old width go:\n%s", got)
 	}
 }

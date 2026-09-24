@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,6 +35,12 @@ type Config struct {
 	ToolbarVisible  *bool  `toml:"toolbar_visible"`
 	PageFormat      string `toml:"page_format"`
 	PageOrientation string `toml:"page_orientation"`
+	// PdfMarginVertical and PdfMarginHorizontal are mm lengths: the top and
+	// bottom, and the left and right, margin of every printed page.
+	PdfMarginVertical   string `toml:"pdf_margin_vertical"`
+	PdfMarginHorizontal string `toml:"pdf_margin_horizontal"`
+	// ZoomDefault is the zoom the viewer starts at and resets to; 1.0 is 100 %.
+	ZoomDefault float64 `toml:"zoom_default"`
 	// CodeLineNumbers is a pointer because the default is on: an absent key
 	// must mean "enabled", which a plain bool cannot express.
 	CodeLineNumbers *bool `toml:"code_line_numbers"`
@@ -95,18 +102,22 @@ type configRaw struct {
 	ViewerTheme string `toml:"viewer_theme"`
 	// DocumentMaxWidth is the retired width key, read only to migrate an old
 	// config to an orientation; it never reaches Config.
-	DocumentMaxWidth string         `toml:"document_max_width"`
-	PageFormat       string         `toml:"page_format"`
-	PageOrientation  string         `toml:"page_orientation"`
-	FontSizeBase     toml.Primitive `toml:"font_size_base"`
-	ShowScrollbars   bool           `toml:"show_scrollbars"`
-	ToolbarPosition  string         `toml:"toolbar_position"`
-	ToolbarVisible   *bool          `toml:"toolbar_visible"`
-	CodeLineNumbers  *bool          `toml:"code_line_numbers"`
+	DocumentMaxWidth    string         `toml:"document_max_width"`
+	PageFormat          string         `toml:"page_format"`
+	PageOrientation     string         `toml:"page_orientation"`
+	PdfMarginVertical   string         `toml:"pdf_margin_vertical"`
+	PdfMarginHorizontal string         `toml:"pdf_margin_horizontal"`
+	ZoomDefault         toml.Primitive `toml:"zoom_default"`
+	FontSizeBase        toml.Primitive `toml:"font_size_base"`
+	ShowScrollbars      bool           `toml:"show_scrollbars"`
+	ToolbarPosition     string         `toml:"toolbar_position"`
+	ToolbarVisible      *bool          `toml:"toolbar_visible"`
+	CodeLineNumbers     *bool          `toml:"code_line_numbers"`
 }
 
-// decodeFontSizeBase resolves the raw FontSizeBase value, accepting both the
-// new string form and the legacy integer form. It returns "" if absent.
+// decodeFontSizeBase resolves the raw FontSizeBase value. It returns "" when
+// the key is absent or is not a string; an integer (the retired form) is
+// invalid, so the theme's own size applies.
 func decodeFontSizeBase(p toml.Primitive) string {
 	var s string
 	if err := toml.PrimitiveDecode(p, &s); err == nil {
@@ -114,9 +125,60 @@ func decodeFontSizeBase(p toml.Primitive) string {
 	}
 	var i int
 	if err := toml.PrimitiveDecode(p, &i); err == nil {
-		return strconv.Itoa(i)
+		log.Printf("config: font_size_base = %d must be a string such as %q, using the theme's size", i, strconv.Itoa(i)+"px")
 	}
 	return ""
+}
+
+// Default PDF margins: the values the export used before they were keys.
+const (
+	defaultMarginVertical   = "25mm"
+	defaultMarginHorizontal = "10mm"
+)
+
+// Bounds for zoom_default, the same the zoom shortcuts move within.
+const (
+	minZoom = 0.5
+	maxZoom = 2.0
+)
+
+// decodeZoomDefault resolves the raw zoom_default, accepting a float or an
+// integer. It returns 1.0 when the key is absent, and clamps to the zoom range.
+func decodeZoomDefault(p toml.Primitive) float64 {
+	var f float64
+	if err := toml.PrimitiveDecode(p, &f); err != nil {
+		var i int
+		if err := toml.PrimitiveDecode(p, &i); err != nil {
+			return 1.0
+		}
+		f = float64(i)
+	}
+	if f < minZoom || f > maxZoom {
+		log.Printf("config: zoom_default %v is outside %v-%v, clamping", f, minZoom, maxZoom)
+		f = math.Min(maxZoom, math.Max(minZoom, f))
+	}
+	return f
+}
+
+// marginRe matches a margin: a plain mm length.
+var marginRe = regexp.MustCompile(`^\d+(\.\d+)?mm$`)
+
+// maxMarginMM keeps a margin from leaving no room for content on the smallest
+// sheet (A5 is 148 mm wide).
+const maxMarginMM = 50
+
+// validMargin returns v when it is a mm length within bounds, else def.
+func validMargin(key, v, def string) string {
+	if v == "" {
+		return def
+	}
+	if marginRe.MatchString(v) {
+		if n, err := strconv.ParseFloat(strings.TrimSuffix(v, "mm"), 64); err == nil && n <= maxMarginMM {
+			return v
+		}
+	}
+	log.Printf("config: invalid %s %q, falling back to %s", key, v, def)
+	return def
 }
 
 // LoadConfig reads ~/.config/o-mark/config.toml. Call EnsureConfig first so
@@ -138,19 +200,25 @@ func LoadConfig() Config {
 	if cfg.ViewerTheme == "" {
 		cfg.ViewerTheme = "github"
 	}
-	cfg.PageFormat = PageFormatA4
-	if raw.PageFormat != "" && raw.PageFormat != PageFormatA4 {
-		log.Printf("config: unknown page_format %q, falling back to %s", raw.PageFormat, PageFormatA4)
+	if f, ok := parseFormat(raw.PageFormat); ok {
+		cfg.PageFormat = f
+	} else {
+		if raw.PageFormat != "" {
+			log.Printf("config: unknown page_format %q, falling back to %s", raw.PageFormat, PageFormatA4)
+		}
+		cfg.PageFormat = PageFormatA4
 	}
-	switch raw.PageOrientation {
-	case OrientationPortrait, OrientationLandscape:
-		cfg.PageOrientation = raw.PageOrientation
-	case "":
+	if o, ok := parseOrientation(raw.PageOrientation); ok {
+		cfg.PageOrientation = o
+	} else if raw.PageOrientation == "" {
 		cfg.PageOrientation = legacyOrientation(raw.DocumentMaxWidth)
-	default:
+	} else {
 		log.Printf("config: invalid page_orientation %q, falling back to %s", raw.PageOrientation, OrientationPortrait)
 		cfg.PageOrientation = OrientationPortrait
 	}
+	cfg.PdfMarginVertical = validMargin("pdf_margin_vertical", raw.PdfMarginVertical, defaultMarginVertical)
+	cfg.PdfMarginHorizontal = validMargin("pdf_margin_horizontal", raw.PdfMarginHorizontal, defaultMarginHorizontal)
+	cfg.ZoomDefault = decodeZoomDefault(raw.ZoomDefault)
 	if cfg.FontSizeBase == "" {
 		// Absent or non-numeric (e.g. a broken value) — defer to the theme.
 		cfg.FontSizeBase = DeferToTheme
@@ -225,12 +293,14 @@ func tomlBool(v bool) string {
 	return "false"
 }
 
-// SaveConfig persists the settings the session can change — the active theme,
-// the toolbar visibility and the page orientation — by substituting them in
-// place, so the comments that document every option survive the write. It also
-// drops the retired document_max_width so no loose width stays beside the format. The whole file is
-// encoded from scratch only when there is nothing on disk to edit.
-func SaveConfig(cfg Config) {
+// SaveConfig persists the settings the session changes — the active theme and
+// the toolbar visibility — by substituting them in place, so the comments that
+// document every option survive the write. Page format and orientation are
+// defaults only the user edits, so they are never written here, except once to
+// migrate a retired document_max_width. Keys the file lacks are then appended
+// from defaultTOML with their comments. With no file on disk it starts from
+// defaultTOML too, and encodes the struct only when there is no default either.
+func SaveConfig(cfg Config, defaultTOML []byte) {
 	dir := ConfigDir()
 	if !filepath.IsAbs(dir) {
 		log.Printf("config: home directory unavailable, cannot save config")
@@ -247,24 +317,85 @@ func SaveConfig(cfg Config) {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Printf("config: cannot read %s, rewriting it whole: %v", p, err)
 		}
-		encodeConfig(p, cfg)
-		return
+		if len(defaultTOML) == 0 {
+			encodeConfig(p, cfg)
+			return
+		}
+		body = defaultTOML
 	}
 
 	updated := setTOMLValue(string(body), "viewer_theme", strconv.Quote(cfg.ViewerTheme))
 	if cfg.ToolbarVisible != nil {
 		updated = setTOMLValue(updated, "toolbar_visible", tomlBool(*cfg.ToolbarVisible))
 	}
-	updated = setTOMLValue(updated, "page_format", strconv.Quote(PageFormatA4))
-	orientation := OrientationPortrait
-	if cfg.PageOrientation == OrientationLandscape {
-		orientation = OrientationLandscape
-	}
-	updated = setTOMLValue(updated, "page_orientation", strconv.Quote(orientation))
+	// A retired document_max_width becomes the orientation it implied, written
+	// once and only when the file has no page_orientation of its own. The page
+	// keys come from the completion below, so they carry their comments.
+	legacyWidth, hadLegacy := tomlValue(updated, "document_max_width")
+	_, hadOrientation := tomlValue(updated, "page_orientation")
 	updated = removeTOMLKey(updated, "document_max_width")
+	updated = completeMissingKeys(updated, string(defaultTOML))
+	if hadLegacy && !hadOrientation {
+		updated = setTOMLValue(updated, "page_orientation", strconv.Quote(legacyOrientation(legacyWidth)))
+	}
 	if err := os.WriteFile(p, []byte(updated), 0644); err != nil {
 		log.Printf("config: cannot write: %v", err)
 	}
+}
+
+// tomlValue returns the unquoted value assigned to key and whether it is set.
+func tomlValue(body, key string) (string, bool) {
+	for _, line := range strings.Split(body, "\n") {
+		m := assignmentRe.FindStringSubmatch(line)
+		if m == nil || m[2] != key {
+			continue
+		}
+		v := strings.TrimSpace(line[len(m[0]):])
+		if i := strings.Index(v, " #"); i >= 0 {
+			v = strings.TrimSpace(v[:i])
+		}
+		return strings.Trim(v, `"'`), true
+	}
+	return "", false
+}
+
+// completeMissingKeys appends every key of defaults that body lacks, each with
+// the comment lines that document it and its default value. A key body already
+// has is left alone, and so is every line the user wrote, which makes a second
+// call a no-op.
+func completeMissingKeys(body, defaults string) string {
+	present := map[string]bool{}
+	for _, line := range strings.Split(body, "\n") {
+		if m := assignmentRe.FindStringSubmatch(line); m != nil {
+			present[m[2]] = true
+		}
+	}
+	var pending []string
+	var out strings.Builder
+	for _, line := range strings.Split(defaults, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			pending = append(pending, line)
+			continue
+		}
+		m := assignmentRe.FindStringSubmatch(line)
+		if m != nil && !present[m[2]] {
+			out.WriteString("\n")
+			for _, c := range pending {
+				out.WriteString(c + "\n")
+			}
+			out.WriteString(line + "\n")
+			present[m[2]] = true
+		}
+		pending = nil
+	}
+	if out.Len() == 0 {
+		return body
+	}
+	if body != "" && !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	return body + out.String()
 }
 
 func encodeConfig(path string, cfg Config) {
@@ -302,7 +433,7 @@ func cssLength(v string) string {
 func ConfigOverrideCSS(cfg Config) string {
 	// The sheet always wins over the theme: a user-edited theme on disk that
 	// still fixes a width or a page height loses to these rules.
-	width, height := pageSides(cfg.PageOrientation)
+	width, height := pageSides(cfg.PageFormat, cfg.PageOrientation)
 	sb := &strings.Builder{}
 	fmt.Fprintf(sb, ":root { --o-mark-page-width: %s; --o-mark-page-height: %s; }\n", width, height)
 	props := []string{"max-width: var(--o-mark-page-width)"}

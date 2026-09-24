@@ -8,7 +8,10 @@ Item {
     readonly property bool hasFocus: webView.activeFocus
     readonly property real zoomFactor: webView.zoomFactor
 
-    function resetZoom() { webView.zoomFactor = 1.0 }
+    // The zoom the viewer starts at and resets to; 1.0 when the config sets none.
+    property real zoomDefault: 1.0
+    function resetZoom() { webView.zoomFactor = zoomDefault }
+    Component.onCompleted: webView.zoomFactor = zoomDefault
 
     readonly property var viewerThemes: { try { return JSON.parse(viewerThemesJson) } catch(e) { return [] } }
     readonly property var activeTheme: viewerThemes[viewerThemeIndex] || viewerThemes[0]
@@ -58,14 +61,16 @@ Item {
     property bool _pdfCapture: false
     property string _pdfPath: ""
     property string _pdfOrientation: "portrait"
+    property string _pdfFormat: "a4"
 
     signal pdfFinished(bool success)
 
-    function exportPdf(path, html, orientation) {
+    function exportPdf(path, html, orientation, format) {
         if (_pdfCapture || !path || !html) return
         _pdfCapture = true
         _pdfPath = path
         _pdfOrientation = orientation
+        _pdfFormat = format
         webView.loadHtml(html, "o-mark://document")
     }
 
@@ -79,7 +84,7 @@ Item {
     }
     Shortcut {
         sequence: "Ctrl+0"
-        onActivated: webView.zoomFactor = 1.0
+        onActivated: viewer.resetZoom()
     }
 
     // Preserve scroll position and the navigation cursor across reloads (doc
@@ -117,7 +122,9 @@ Item {
             for (var i = 0; i < scripts.length; i++)
                 webView.runJavaScript(scripts[i])
             if (_pdfCapture) {
-                webView.printToPdf(_pdfPath, WebEngineView.A4,
+                webView.printToPdf(_pdfPath,
+                                   _pdfFormat === "a3" ? WebEngineView.A3
+                                   : _pdfFormat === "a5" ? WebEngineView.A5 : WebEngineView.A4,
                                    _pdfOrientation === "landscape" ? WebEngineView.Landscape
                                                                      : WebEngineView.Portrait)
                 return

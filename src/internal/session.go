@@ -19,6 +19,7 @@ type StateSink interface {
 	SetString(key, value string)
 	SetInt(key string, value int)
 	SetBool(key string, value bool)
+	SetFloat(key string, value float64)
 }
 
 // State groups the QML context properties so Publish can apply them in the
@@ -38,10 +39,11 @@ type ChromeState struct {
 
 // LayoutState feeds pure QML bindings for the toolbar and scrollbars.
 type LayoutState struct {
-	ShowScrollbars  bool   // "showScrollbars"
-	ToolbarPosition string // "toolbarPositionConfig"
-	ToolbarVisible  bool   // "toolbarVisibleConfig"
-	PageOrientation string // "pageOrientationConfig"
+	ShowScrollbars  bool    // "showScrollbars"
+	ToolbarPosition string  // "toolbarPositionConfig"
+	ToolbarVisible  bool    // "toolbarVisibleConfig"
+	PageOrientation string  // "pageOrientationConfig"
+	ZoomDefault     float64 // "zoomDefaultConfig"
 }
 
 // IdentityState is the startup-only identity. Apply never populates it, so a
@@ -76,6 +78,7 @@ func (s State) Publish(to StateSink) {
 		to.SetString("toolbarPositionConfig", s.Layout.ToolbarPosition)
 		to.SetBool("toolbarVisibleConfig", s.Layout.ToolbarVisible)
 		to.SetString("pageOrientationConfig", s.Layout.PageOrientation)
+		to.SetFloat("zoomDefaultConfig", s.Layout.ZoomDefault)
 	}
 	if s.Identity != nil {
 		to.SetString("documentTitle", s.Identity.DocumentTitle)
@@ -130,21 +133,28 @@ type SessionOptions struct {
 	ThemesDir  string
 	DiskThemes []ViewerTheme
 	Palette    PaletteSource
+	// DefaultConfig is the embedded config.toml, used to complete the user's
+	// file on quit.
+	DefaultConfig []byte
 }
 
 // Session owns one open document: its raw text, config, palette, font, theme
 // list, and reload counter. It recomputes and publishes UI state; it holds no
 // Qt types, so it runs on the GUI thread only because its callers do.
 type Session struct {
-	absPath    string
-	raw        string
-	docDir     string
-	title      string
-	anchor     string
-	cfg        Config
-	themesDir  string
-	diskThemes []ViewerTheme
-	paletteSrc PaletteSource
+	absPath     string
+	raw         string
+	docDir      string
+	title       string
+	anchor      string
+	cfg         Config
+	themesDir   string
+	diskThemes  []ViewerTheme
+	paletteSrc  PaletteSource
+	defaultTOML []byte
+	// orientationOverride is the orientation the user picked with Ctrl+R: a view
+	// held in memory until the document closes, never a default. Empty means none.
+	orientationOverride string
 
 	palette ThemePalette
 	font    string
@@ -160,15 +170,16 @@ func StartSession(o SessionOptions) (*Session, State, error) {
 		return nil, State{}, err
 	}
 	s := &Session{
-		absPath:    o.AbsPath,
-		raw:        raw,
-		docDir:     o.DocDir,
-		title:      o.Title,
-		anchor:     o.Anchor,
-		cfg:        o.Config,
-		themesDir:  o.ThemesDir,
-		diskThemes: o.DiskThemes,
-		paletteSrc: o.Palette,
+		absPath:     o.AbsPath,
+		raw:         raw,
+		docDir:      o.DocDir,
+		title:       o.Title,
+		anchor:      o.Anchor,
+		cfg:         o.Config,
+		themesDir:   o.ThemesDir,
+		diskThemes:  o.DiskThemes,
+		paletteSrc:  o.Palette,
+		defaultTOML: o.DefaultConfig,
 	}
 	s.palette = s.readPalette()
 	s.font = ReadOmarchyFont()
@@ -179,12 +190,7 @@ func StartSession(o SessionOptions) (*Session, State, error) {
 			OmarchyPaletteJSON: paletteJSON(s.palette),
 			OmarchyFont:        s.font,
 		},
-		Layout: &LayoutState{
-			ShowScrollbars:  s.cfg.ShowScrollbars,
-			ToolbarPosition: s.cfg.ToolbarPosition,
-			ToolbarVisible:  toolbarVisible(s.cfg),
-			PageOrientation: sheetOrientation(s.cfg.PageOrientation),
-		},
+		Layout: s.layout(),
 		Identity: &IdentityState{
 			DocumentTitle:           s.title,
 			DocDir:                  s.docDir,
@@ -195,6 +201,29 @@ func StartSession(o SessionOptions) (*Session, State, error) {
 		Document: s.documentState(),
 	}
 	return s, state, nil
+}
+
+// effective returns the config the document is shown with: the defaults, then
+// the sheet the document declares in its front matter, then the orientation
+// the user picked in this session.
+func (s *Session) effective() Config {
+	c := s.cfg.forDocument(s.raw)
+	if s.orientationOverride != "" {
+		c.PageOrientation = s.orientationOverride
+	}
+	return c
+}
+
+// layout is the Layout group for the session's current config and sheet.
+func (s *Session) layout() *LayoutState {
+	c := s.effective()
+	return &LayoutState{
+		ShowScrollbars:  c.ShowScrollbars,
+		ToolbarPosition: c.ToolbarPosition,
+		ToolbarVisible:  toolbarVisible(c),
+		PageOrientation: sheetOrientation(c.PageOrientation),
+		ZoomDefault:     zoomDefault(c),
+	}
 }
 
 // Apply moves the session on one trigger and returns only the State groups
@@ -218,33 +247,16 @@ func (s *Session) Apply(c Change) State {
 		}
 	case ConfigChanged:
 		cfg := LoadConfig()
-		cfg.ViewerTheme = s.cfg.ViewerTheme                           // a config edit never yanks the session theme
-		cfg.PageOrientation = sheetOrientation(s.cfg.PageOrientation) // nor the session orientation
+		cfg.ViewerTheme = s.cfg.ViewerTheme // a config edit never yanks the session theme
 		s.cfg = cfg
-		return State{
-			Layout: &LayoutState{
-				ShowScrollbars:  cfg.ShowScrollbars,
-				ToolbarPosition: cfg.ToolbarPosition,
-				ToolbarVisible:  toolbarVisible(cfg),
-				PageOrientation: cfg.PageOrientation,
-			},
-			Document: s.documentState(),
-		}
+		return State{Layout: s.layout(), Document: s.documentState()}
 	case OrientationToggled:
-		if sheetOrientation(s.cfg.PageOrientation) == OrientationLandscape {
-			s.cfg.PageOrientation = OrientationPortrait
+		if sheetOrientation(s.effective().PageOrientation) == OrientationLandscape {
+			s.orientationOverride = OrientationPortrait
 		} else {
-			s.cfg.PageOrientation = OrientationLandscape
+			s.orientationOverride = OrientationLandscape
 		}
-		return State{
-			Layout: &LayoutState{
-				ShowScrollbars:  s.cfg.ShowScrollbars,
-				ToolbarPosition: s.cfg.ToolbarPosition,
-				ToolbarVisible:  toolbarVisible(s.cfg),
-				PageOrientation: s.cfg.PageOrientation,
-			},
-			Document: s.documentState(),
-		}
+		return State{Layout: s.layout(), Document: s.documentState()}
 	case DocumentSaved:
 		raw, err := LoadFile(s.absPath)
 		if err != nil {
@@ -253,7 +265,7 @@ func (s *Session) Apply(c Change) State {
 		}
 		s.raw = raw
 		s.reloads++
-		return State{Document: s.documentState()}
+		return State{Layout: s.layout(), Document: s.documentState()}
 	case Persist:
 		all := allThemes(s.diskThemes)
 		cfg := s.cfg
@@ -262,7 +274,7 @@ func (s *Session) Apply(c Change) State {
 		}
 		v := ch.ToolbarVisible
 		cfg.ToolbarVisible = &v
-		SaveConfig(cfg)
+		SaveConfig(cfg, s.defaultTOML)
 		return State{}
 	default:
 		return State{}
@@ -272,7 +284,7 @@ func (s *Session) Apply(c Change) State {
 // PreparePdf renders the print document against the session's current raw
 // text, font, and config, and the same palette source used for the screen.
 func (s *Session) PreparePdf() PdfExport {
-	return PreparePdfExport(s.absPath, s.raw, s.docDir, s.font, s.cfg, s.paletteSrc)
+	return PreparePdfExport(s.absPath, s.raw, s.docDir, s.font, s.effective(), s.paletteSrc)
 }
 
 // readPalette resolves the live palette, falling back to the built-in one when
@@ -292,10 +304,19 @@ func (s *Session) documentState() *DocumentState {
 		log.Printf("session: cannot marshal post-load scripts: %v", err)
 	}
 	return &DocumentState{
-		ViewerThemesJSON: RenderViewerThemesJSON(s.raw, s.palette, s.docDir, s.diskThemes, s.themesDir, s.cfg, s.font),
+		ViewerThemesJSON: RenderViewerThemesJSON(s.raw, s.palette, s.docDir, s.diskThemes, s.themesDir, s.effective(), s.font),
 		PostLoadScripts:  string(scripts),
 		DocReloadSignal:  s.reloads,
 	}
+}
+
+// zoomDefault reads the config's initial zoom, taking a config that never set
+// it (a zero value) as 100 %.
+func zoomDefault(cfg Config) float64 {
+	if cfg.ZoomDefault == 0 {
+		return 1.0
+	}
+	return cfg.ZoomDefault
 }
 
 // toolbarVisible reads the config's tri-state visibility, defaulting to hidden.

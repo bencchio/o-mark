@@ -22,7 +22,7 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.7.4"
+var version = "0.7.5"
 
 // qtSink writes the session's output to QML context properties. It is the only
 // Qt-aware part of publication; the order the properties must land in lives in
@@ -37,6 +37,9 @@ func (q qtSink) SetInt(key string, value int) {
 }
 func (q qtSink) SetBool(key string, value bool) {
 	q.ctx.SetContextProperty2(key, qt.NewQVariant8(value))
+}
+func (q qtSink) SetFloat(key string, value float64) {
+	q.ctx.SetContextProperty2(key, qt.NewQVariant9(value))
 }
 
 // extractUI extracts the embedded QML files to a temp directory and returns
@@ -84,6 +87,7 @@ func wirePdfExport(pm *qml.QQmlPropertyMap, sess *internal.Session) {
 	pm.Insert("html", qt.NewQVariant14(""))
 	pm.Insert("exists", qt.NewQVariant8(false))
 	pm.Insert("orientation", qt.NewQVariant14(internal.OrientationPortrait))
+	pm.Insert("format", qt.NewQVariant14(internal.PageFormatA4))
 	pm.OnValueChanged(func(key string, value *qt.QVariant) {
 		if key != "prepare" {
 			return
@@ -93,6 +97,7 @@ func wirePdfExport(pm *qml.QQmlPropertyMap, sess *internal.Session) {
 		pm.Insert("html", qt.NewQVariant14(prep.HTML))
 		pm.Insert("exists", qt.NewQVariant8(prep.Exists))
 		pm.Insert("orientation", qt.NewQVariant14(prep.Orientation))
+		pm.Insert("format", qt.NewQVariant14(prep.Format))
 	})
 }
 
@@ -296,14 +301,15 @@ func main() {
 	}
 
 	sess, state, err := internal.StartSession(internal.SessionOptions{
-		AbsPath:    absPath,
-		DocDir:     docDir,
-		Title:      displayPath,
-		Anchor:     initialAnchor,
-		Config:     cfg,
-		ThemesDir:  themesDir,
-		DiskThemes: diskThemes,
-		Palette:    paletteSrc,
+		AbsPath:       absPath,
+		DocDir:        docDir,
+		Title:         displayPath,
+		Anchor:        initialAnchor,
+		Config:        cfg,
+		DefaultConfig: defaultConfigTOML,
+		ThemesDir:     themesDir,
+		DiskThemes:    diskThemes,
+		Palette:       paletteSrc,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

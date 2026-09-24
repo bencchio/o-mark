@@ -60,7 +60,7 @@ Window {
         }
         _toolbarBeforePdf = root.toolbarVisible
         root.toolbarVisible = false
-        viewer.exportPdf(pdfExport.path, pdfExport.html, pdfExport.orientation)
+        viewer.exportPdf(pdfExport.path, pdfExport.html, pdfExport.orientation, pdfExport.format)
     }
 
     Component.onCompleted: viewer.requestFocus()
@@ -118,6 +118,7 @@ Window {
             height: root.toolbarVisible ? parent.height - container._chrome : parent.height
             colors: colors
             viewerThemeIndex: root.viewerThemeIndex
+            zoomDefault: zoomDefaultConfig
             onSearchResultsChanged: function(count, current) { toolbar.setSearchResult(count, current) }
             onPdfFinished: function(success) {
                 root.toolbarVisible = root._toolbarBeforePdf

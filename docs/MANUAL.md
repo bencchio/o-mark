@@ -39,24 +39,42 @@ pages: it stays a continuous document with marked pages, not a slide viewer.
 
 ## Page format and orientation
 
-The document is laid out on an A4 sheet: 210 mm wide and 297 mm tall in
-portrait, the other way round in landscape. `Ctrl+R` (or the orientation control
-in the toolbar) flips between the two, and the choice is saved on quit as
-`page_orientation`. A window narrower than the sheet just uses its full width.
-See [docs/CONFIG.md](CONFIG.md).
+The document is laid out on a sheet: A4 (210 × 297 mm) by default, or A3 or A5,
+in portrait or landscape. The defaults are `page_format` and `page_orientation`
+in the config.
+
+A document can declare its own sheet in its front matter, which wins over the
+config for that file only:
+
+```yaml
+---
+page_format: a5
+page_orientation: landscape
+---
+```
+
+Values are matched without regard to case and may be quoted; an unknown value is
+ignored. Only those two keys are read.
+
+`Ctrl+R` (or the orientation control in the toolbar) flips the orientation for
+the session, also on a document that declares one. It is not saved: reopening the
+document shows what it declares, or the config default. A window narrower than
+the sheet just uses its full width. See [docs/CONFIG.md](CONFIG.md).
 
 ## Export to PDF
 
 `Ctrl+P` (or the `PDF` control in the toolbar) writes a print-colored PDF
 next to the open file (`document.md` → `document.pdf`). The PDF uses the same
-A4 sheet and orientation as the screen, with a 25 mm margin at the top and
-bottom of every page. If that PDF already exists, it is left alone. The toolbar
+sheet and orientation as the screen, with a 25 mm margin at the top and bottom of
+every page and 10 mm at the sides (`pdf_margin_vertical` and
+`pdf_margin_horizontal` in the config). If that PDF already exists, it is left alone. The toolbar
 is hidden for the capture.
 
 ## Zoom
 
-`Ctrl++` / `Ctrl+-` zoom in and out, `Ctrl+0` resets to the default. The
-toolbar shows the current zoom percentage.
+`Ctrl++` / `Ctrl+-` zoom in and out, `Ctrl+0` resets to the default zoom, which
+is 100 % unless the config sets `zoom_default`. The toolbar shows the current zoom
+percentage.
 
 ## Toolbar and themes
 

@@ -77,7 +77,7 @@ search already closed) is the regular toolbar toggle described below.
 |---|---|---|
 | Zoom in | `Ctrl++` or `Ctrl+=` | `Ctrl` + wheel up |
 | Zoom out | `Ctrl+-` | `Ctrl` + wheel down |
-| Reset zoom to 100% | `Ctrl+0` | Click `↺` in the toolbar |
+| Reset zoom to the default (100%, or `zoom_default`) | `Ctrl+0` | Click `↺` in the toolbar |
 
 The current zoom level is shown in the toolbar.
 
@@ -87,7 +87,8 @@ The current zoom level is shown in the toolbar.
 |---|---|---|
 | Flip between portrait and landscape | `Ctrl+R` | Click the orientation label in the toolbar |
 
-The orientation is saved on quit. The PDF export uses the same sheet.
+The orientation lasts for the session only, also on a document that declares its
+own, and is not saved. The PDF export uses the same sheet.
 
 ## Export
 

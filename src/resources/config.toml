@@ -2,13 +2,26 @@
 # Values: "system" (Omarchy palette) | "github" | "writer" | "night" | "sepia" | "mono" | "minimal"
 viewer_theme = "github"
 
-# Page format. Only "a4" exists for now; it sets the width and height of the sheet
-# on screen and in the exported PDF.
+# Page format: the size of the sheet, on screen and in the exported PDF.
+# Values: "a3" | "a4" | "a5". A document can declare its own with `page_format:`
+# in its front matter, which wins over this default.
 page_format = "a4"
 
-# Page orientation at launch. Overwritten on quit with the session state (Ctrl+R).
-# Values: "portrait" | "landscape"
+# Page orientation of the sheet. Values: "portrait" | "landscape".
+# A document can declare its own with `page_orientation:` in its front matter.
+# Ctrl+R flips it for the session only; this default changes only by editing it here.
 page_orientation = "portrait"
+
+# Margin above and below the content of every page of the exported PDF, in mm (0-50).
+pdf_margin_vertical = "25mm"
+
+# Margin left and right of the content of every page of the exported PDF, in mm (0-50).
+# It does not change the screen.
+pdf_margin_horizontal = "10mm"
+
+# Zoom at launch, and what Ctrl+0 and the toolbar reset return to. 1.0 is 100 %;
+# values from 0.5 to 2.0. It is not saved between sessions.
+zoom_default = 1.0
 
 # Base document font size. "default" = use the size each theme defines;
 # or a size in px (e.g. "16" or "17px").

@@ -59,33 +59,45 @@ func TestPreparePdfExportMissingWatcher(t *testing.T) {
 
 func TestPrintMarginsWrapsTheBodyInARepeatingSpacerTable(t *testing.T) {
 	html := "<!DOCTYPE html><html><head><style>x</style></head><body><p>hi</p></body></html>"
-	got := printMargins(html)
-	for _, want := range []string{"<thead>", "<tfoot>", "height:25mm", "<p>hi</p>", "margin: 0 auto"} {
+	got := printMargins(html, Config{})
+	for _, want := range []string{"<thead>", "<tfoot>", "height:25mm", "<p>hi</p>", "margin: 0 auto", "padding: 0 10mm"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("print HTML is missing %q:\n%s", want, got)
 		}
 	}
 	if strings.Count(got, "height:25mm") != 2 {
-		t.Error("expected one 25mm spacer in the header and one in the footer")
+		t.Error("expected one spacer in the header and one in the footer")
 	}
 	if !strings.HasSuffix(got, "</body></html>") {
 		t.Error("the document must still close normally")
 	}
 }
 
+func TestPrintMarginsFollowTheConfig(t *testing.T) {
+	html := "<!DOCTYPE html><html><head></head><body><p>hi</p></body></html>"
+	got := printMargins(html, Config{PdfMarginVertical: "30mm", PdfMarginHorizontal: "20mm"})
+	if strings.Count(got, "height:30mm") != 2 || !strings.Contains(got, "padding: 0 20mm") {
+		t.Errorf("margins did not follow the config:\n%s", got)
+	}
+	bad := printMargins(html, Config{PdfMarginVertical: "url(x)", PdfMarginHorizontal: "1cm"})
+	if strings.Contains(bad, "url(x)") || strings.Contains(bad, "1cm") {
+		t.Errorf("an invalid margin reached the CSS:\n%s", bad)
+	}
+}
+
 func TestPrintMarginsLeavesUnexpectedHTMLAlone(t *testing.T) {
-	if got := printMargins("no body here"); got != "no body here" {
+	if got := printMargins("no body here", Config{}); got != "no body here" {
 		t.Errorf("got %q", got)
 	}
 }
 
-func TestPreparePdfExportAddsMargins(t *testing.T) {
+func TestPreparePdfExportCarriesTheSheet(t *testing.T) {
 	dir := t.TempDir()
-	got := PreparePdfExport(filepath.Join(dir, "doc.md"), "# Hi\n", dir, "sans-serif", Config{PageOrientation: "landscape"}, nil)
+	got := PreparePdfExport(filepath.Join(dir, "doc.md"), "# Hi\n", dir, "sans-serif", Config{PageFormat: "a5", PageOrientation: "landscape"}, nil)
 	if !strings.Contains(got.HTML, "o-mark-print") {
 		t.Error("the print document has no margin table")
 	}
-	if got.Orientation != "landscape" {
-		t.Errorf("orientation: %q", got.Orientation)
+	if got.Orientation != "landscape" || got.Format != "a5" {
+		t.Errorf("sheet: %q %q", got.Format, got.Orientation)
 	}
 }

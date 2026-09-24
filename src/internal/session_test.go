@@ -13,6 +13,7 @@ type sessionCall struct {
 	str string
 	i   int
 	b   bool
+	f   float64
 }
 
 type sessionRecorder struct{ calls []sessionCall }
@@ -25,6 +26,10 @@ func (r *sessionRecorder) SetInt(k string, v int) {
 }
 func (r *sessionRecorder) SetBool(k string, v bool) {
 	r.calls = append(r.calls, sessionCall{key: k, b: v})
+}
+
+func (r *sessionRecorder) SetFloat(k string, v float64) {
+	r.calls = append(r.calls, sessionCall{key: k, f: v})
 }
 
 func (r *sessionRecorder) index(key string) int {
@@ -322,20 +327,30 @@ func TestSessionConfigReloadPreservesOrientation(t *testing.T) {
 	}
 }
 
-func TestSessionPersistWritesOrientation(t *testing.T) {
+// The orientation of a session is a view, not a default: only the config
+// edited by hand sets it.
+func TestSessionPersistLeavesTheOrientationDefault(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv(OmarchyStateEnv, "")
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte("page_orientation = \"portrait\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
 	s.Apply(OrientationToggled{})
 	s.Apply(Persist{})
 
-	body, err := os.ReadFile(filepath.Join(home, ".config", "o-mark", "config.toml"))
+	body, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), `page_orientation = "landscape"`) {
-		t.Errorf("orientation was not persisted:\n%s", body)
+	if !strings.Contains(string(body), `page_orientation = "portrait"`) {
+		t.Errorf("the session orientation leaked into the default:\n%s", body)
 	}
 }
 
@@ -348,5 +363,114 @@ func TestSessionPreparePdfCarriesOrientation(t *testing.T) {
 	s.Apply(OrientationToggled{})
 	if got := s.PreparePdf().Orientation; got != "landscape" {
 		t.Errorf("after a toggle: %q", got)
+	}
+}
+
+const declaredDoc = "---\npage_format: a5\npage_orientation: landscape\n---\n# Hi\n"
+
+func TestSessionDocumentDeclaresItsSheet(t *testing.T) {
+	isolateHome(t)
+	s := newSession(t, writeSessionDoc(t, declaredDoc), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	got := s.layout()
+	if got.PageOrientation != "landscape" {
+		t.Errorf("layout orientation: %q", got.PageOrientation)
+	}
+	pdf := s.PreparePdf()
+	if pdf.Format != "a5" || pdf.Orientation != "landscape" {
+		t.Errorf("pdf sheet: %q %q", pdf.Format, pdf.Orientation)
+	}
+	doc := s.documentState().ViewerThemesJSON
+	if !strings.Contains(doc, "--o-mark-page-width: 210mm") || !strings.Contains(doc, "--o-mark-page-height: 148mm") {
+		t.Error("the screen render does not carry the A5 landscape sheet")
+	}
+}
+
+// Ctrl+R is a view of this session: it wins over the declaration, dies with the
+// session, and never touches the defaults.
+func TestSessionOverrideWinsOverTheDeclaration(t *testing.T) {
+	isolateHome(t)
+	s := newSession(t, writeSessionDoc(t, declaredDoc), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	got := s.Apply(OrientationToggled{})
+	if got.Layout.PageOrientation != "portrait" {
+		t.Errorf("a flip from the declared landscape should be portrait, got %q", got.Layout.PageOrientation)
+	}
+	if s.cfg.PageOrientation != "" && s.cfg.PageOrientation != "portrait" {
+		t.Errorf("the default was changed: %q", s.cfg.PageOrientation)
+	}
+	if again := s.Apply(OrientationToggled{}); again.Layout.PageOrientation != "landscape" {
+		t.Errorf("second flip: %q", again.Layout.PageOrientation)
+	}
+}
+
+func TestSessionOverrideSurvivesReloadsEvenWhenTheDeclarationChanges(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, declaredDoc)
+	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s.Apply(OrientationToggled{}) // portrait, over the declared landscape
+
+	if err := os.WriteFile(doc, []byte("---\npage_orientation: landscape\n---\n# Edited\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := s.Apply(DocumentSaved{})
+	if got.Layout == nil || got.Layout.PageOrientation != "portrait" {
+		t.Errorf("the override should survive a reload, got %+v", got.Layout)
+	}
+
+	if err := os.WriteFile(doc, []byte("---\npage_orientation: portrait\n---\n# Edited again\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Apply(DocumentSaved{}); got.Layout.PageOrientation != "portrait" {
+		t.Errorf("still the override, got %q", got.Layout.PageOrientation)
+	}
+}
+
+func TestSessionReloadPublishesTheNewDeclaration(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, "# Hi\n")
+	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	if err := os.WriteFile(doc, []byte(declaredDoc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Apply(DocumentSaved{}); got.Layout == nil || got.Layout.PageOrientation != "landscape" {
+		t.Errorf("the toolbar must follow a declaration added by a reload, got %+v", got.Layout)
+	}
+}
+
+func TestSessionConfigEditAppliesUntilTheUserFlips(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(OmarchyStateEnv, "")
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(o string) {
+		if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("page_orientation = \""+o+"\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("portrait")
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), LoadConfig(), nil, &fakePalette{current: sessionPalette("#101010")})
+
+	write("landscape")
+	if got := s.Apply(ConfigChanged{}); got.Layout.PageOrientation != "landscape" {
+		t.Errorf("an edit of the default should apply while nothing was flipped, got %q", got.Layout.PageOrientation)
+	}
+	s.Apply(OrientationToggled{}) // portrait
+	write("landscape")
+	if got := s.Apply(ConfigChanged{}); got.Layout.PageOrientation != "portrait" {
+		t.Errorf("after a flip the session view wins, got %q", got.Layout.PageOrientation)
+	}
+}
+
+func TestSessionLayoutCarriesTheZoomDefault(t *testing.T) {
+	isolateHome(t)
+	cfg := sessionConfig("github")
+	if got := newSession(t, writeSessionDoc(t, "# Hi\n"), cfg, nil, &fakePalette{current: sessionPalette("#101010")}).layout().ZoomDefault; got != 1.0 {
+		t.Errorf("a config that sets none is 100 %%, got %v", got)
+	}
+	cfg.ZoomDefault = 1.2
+	if got := newSession(t, writeSessionDoc(t, "# Hi\n"), cfg, nil, &fakePalette{current: sessionPalette("#101010")}).layout().ZoomDefault; got != 1.2 {
+		t.Errorf("got %v, want 1.2", got)
 	}
 }
