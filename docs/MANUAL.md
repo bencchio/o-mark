@@ -37,11 +37,21 @@ never splits the page. A document with no such line keeps rendering as one
 continuous document, unchanged. There is no keyboard navigation between
 pages: it stays a continuous document with marked pages, not a slide viewer.
 
+## Page format and orientation
+
+The document is laid out on an A4 sheet: 210 mm wide and 297 mm tall in
+portrait, the other way round in landscape. `Ctrl+R` (or the orientation control
+in the toolbar) flips between the two, and the choice is saved on quit as
+`page_orientation`. A window narrower than the sheet just uses its full width.
+See [docs/CONFIG.md](CONFIG.md).
+
 ## Export to PDF
 
 `Ctrl+P` (or the `PDF` control in the toolbar) writes a print-colored PDF
-next to the open file (`document.md` → `document.pdf`). If that PDF already
-exists, it is left alone. The toolbar is hidden for the capture.
+next to the open file (`document.md` → `document.pdf`). The PDF uses the same
+A4 sheet and orientation as the screen, with a 25 mm margin at the top and
+bottom of every page. If that PDF already exists, it is left alone. The toolbar
+is hidden for the capture.
 
 ## Zoom
 
@@ -51,7 +61,8 @@ toolbar shows the current zoom percentage.
 ## Toolbar and themes
 
 `Esc` toggles the toolbar; `T` / `Z` jump to its controls. The toolbar holds
-the theme selector, the zoom indicator, PDF export and the current file name.
+the theme selector, the zoom indicator, PDF export, the page orientation and
+the current file name.
 Themes and their customization live in [docs/THEMES.md](THEMES.md).
 
 ## Live reload

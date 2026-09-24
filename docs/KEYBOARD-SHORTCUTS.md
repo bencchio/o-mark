@@ -81,6 +81,14 @@ search already closed) is the regular toolbar toggle described below.
 
 The current zoom level is shown in the toolbar.
 
+## Page
+
+| Action | Keyboard | Mouse |
+|---|---|---|
+| Flip between portrait and landscape | `Ctrl+R` | Click the orientation label in the toolbar |
+
+The orientation is saved on quit. The PDF export uses the same sheet.
+
 ## Export
 
 | Action | Keyboard | Mouse |
@@ -109,7 +117,8 @@ you that keys go to the toolbar rather than to the page. O'Mark remembers which
 control you were on the last time, so `Esc` brings you back to it.
 
 The toolbar holds the search bar (see [Search](#search)), the zoom reset
-button (`↺`), the PDF export control, and the theme selector.
+button (`↺`), the PDF export control, the page orientation control, and the
+theme selector.
 
 ### Moving around the toolbar
 
@@ -117,8 +126,9 @@ button (`↺`), the PDF export control, and the theme selector.
 |---|---|
 | Go straight to the theme selector | `T` |
 | Go straight to the zoom reset `↺` | `Z` |
-| Move between the two controls | `←` / `→` |
+| Move between the controls | `←` / `→` |
 | Reset zoom (when `↺` is selected) | `Enter` or `Space` |
+| Flip the orientation (when it is selected) | `Enter` or `Space` |
 
 ### Changing the theme
 

@@ -30,7 +30,7 @@ o-mark document.md
 ## Configuration
 
 `~/.config/o-mark/config.toml` (created on first run) controls the starting
-theme, document max-width and font size, scrollbar visibility, code block line
+theme, page orientation and font size, scrollbar visibility, code block line
 numbers, and toolbar position/visibility. See the comments in the generated
 file for details.
 

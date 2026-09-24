@@ -41,6 +41,7 @@ type LayoutState struct {
 	ShowScrollbars  bool   // "showScrollbars"
 	ToolbarPosition string // "toolbarPositionConfig"
 	ToolbarVisible  bool   // "toolbarVisibleConfig"
+	PageOrientation string // "pageOrientationConfig"
 }
 
 // IdentityState is the startup-only identity. Apply never populates it, so a
@@ -74,6 +75,7 @@ func (s State) Publish(to StateSink) {
 		to.SetBool("showScrollbars", s.Layout.ShowScrollbars)
 		to.SetString("toolbarPositionConfig", s.Layout.ToolbarPosition)
 		to.SetBool("toolbarVisibleConfig", s.Layout.ToolbarVisible)
+		to.SetString("pageOrientationConfig", s.Layout.PageOrientation)
 	}
 	if s.Identity != nil {
 		to.SetString("documentTitle", s.Identity.DocumentTitle)
@@ -102,16 +104,21 @@ type ConfigChanged struct{}
 // DocumentSaved reports the open document was rewritten.
 type DocumentSaved struct{}
 
+// OrientationToggled reports the user flipped the sheet between portrait and
+// landscape.
+type OrientationToggled struct{}
+
 // Persist carries the UI's final selection to disk and publishes nothing.
 type Persist struct {
 	ViewerThemeIndex int
 	ToolbarVisible   bool
 }
 
-func (ThemeChanged) isChange()  {}
-func (ConfigChanged) isChange() {}
-func (DocumentSaved) isChange() {}
-func (Persist) isChange()       {}
+func (ThemeChanged) isChange()       {}
+func (ConfigChanged) isChange()      {}
+func (DocumentSaved) isChange()      {}
+func (Persist) isChange()            {}
+func (OrientationToggled) isChange() {}
 
 // SessionOptions is the startup state main hands the session.
 type SessionOptions struct {
@@ -176,6 +183,7 @@ func StartSession(o SessionOptions) (*Session, State, error) {
 			ShowScrollbars:  s.cfg.ShowScrollbars,
 			ToolbarPosition: s.cfg.ToolbarPosition,
 			ToolbarVisible:  toolbarVisible(s.cfg),
+			PageOrientation: sheetOrientation(s.cfg.PageOrientation),
 		},
 		Identity: &IdentityState{
 			DocumentTitle:           s.title,
@@ -210,13 +218,30 @@ func (s *Session) Apply(c Change) State {
 		}
 	case ConfigChanged:
 		cfg := LoadConfig()
-		cfg.ViewerTheme = s.cfg.ViewerTheme // a config edit never yanks the session theme
+		cfg.ViewerTheme = s.cfg.ViewerTheme                           // a config edit never yanks the session theme
+		cfg.PageOrientation = sheetOrientation(s.cfg.PageOrientation) // nor the session orientation
 		s.cfg = cfg
 		return State{
 			Layout: &LayoutState{
 				ShowScrollbars:  cfg.ShowScrollbars,
 				ToolbarPosition: cfg.ToolbarPosition,
 				ToolbarVisible:  toolbarVisible(cfg),
+				PageOrientation: cfg.PageOrientation,
+			},
+			Document: s.documentState(),
+		}
+	case OrientationToggled:
+		if sheetOrientation(s.cfg.PageOrientation) == OrientationLandscape {
+			s.cfg.PageOrientation = OrientationPortrait
+		} else {
+			s.cfg.PageOrientation = OrientationLandscape
+		}
+		return State{
+			Layout: &LayoutState{
+				ShowScrollbars:  s.cfg.ShowScrollbars,
+				ToolbarPosition: s.cfg.ToolbarPosition,
+				ToolbarVisible:  toolbarVisible(s.cfg),
+				PageOrientation: s.cfg.PageOrientation,
 			},
 			Document: s.documentState(),
 		}

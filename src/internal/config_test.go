@@ -127,3 +127,111 @@ func TestSetTOMLValue(t *testing.T) {
 		})
 	}
 }
+
+// loadConfigFrom runs LoadConfig against a config.toml holding body.
+func loadConfigFrom(t *testing.T, body string) Config {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return LoadConfig()
+}
+
+func TestLoadConfigPageDefaults(t *testing.T) {
+	cfg := loadConfigFrom(t, "")
+	if cfg.PageFormat != "a4" || cfg.PageOrientation != "portrait" {
+		t.Errorf("defaults: got %q %q, want a4 portrait", cfg.PageFormat, cfg.PageOrientation)
+	}
+}
+
+func TestLoadConfigPageInvalid(t *testing.T) {
+	cfg := loadConfigFrom(t, "page_format = \"letter\"\npage_orientation = \"sideways\"\n")
+	if cfg.PageFormat != "a4" || cfg.PageOrientation != "portrait" {
+		t.Errorf("invalid values: got %q %q, want a4 portrait", cfg.PageFormat, cfg.PageOrientation)
+	}
+}
+
+func TestLoadConfigMigratesDocumentMaxWidth(t *testing.T) {
+	tests := []struct{ width, want string }{
+		{"default", "portrait"},
+		{"210mm", "portrait"},
+		{"297mm", "landscape"},
+		{"50%", "portrait"},
+		{"80ch", "portrait"},
+	}
+	for _, tc := range tests {
+		cfg := loadConfigFrom(t, "document_max_width = \""+tc.width+"\"\n")
+		if cfg.PageOrientation != tc.want {
+			t.Errorf("document_max_width %q: got %q, want %q", tc.width, cfg.PageOrientation, tc.want)
+		}
+	}
+}
+
+func TestLoadConfigOrientationBeatsLegacyWidth(t *testing.T) {
+	cfg := loadConfigFrom(t, "document_max_width = \"297mm\"\npage_orientation = \"portrait\"\n")
+	if cfg.PageOrientation != "portrait" {
+		t.Errorf("an explicit orientation must win over the legacy width, got %q", cfg.PageOrientation)
+	}
+}
+
+func TestConfigOverrideCSSPageSheet(t *testing.T) {
+	portrait := ConfigOverrideCSS(Config{PageOrientation: "portrait"})
+	for _, want := range []string{"--o-mark-page-width: 210mm", "--o-mark-page-height: 297mm", "max-width: var(--o-mark-page-width)", "min-height: var(--o-mark-page-height)"} {
+		if !strings.Contains(portrait, want) {
+			t.Errorf("portrait CSS is missing %q:\n%s", want, portrait)
+		}
+	}
+	landscape := ConfigOverrideCSS(Config{PageOrientation: "landscape"})
+	if !strings.Contains(landscape, "--o-mark-page-width: 297mm") || !strings.Contains(landscape, "--o-mark-page-height: 210mm") {
+		t.Errorf("landscape CSS swaps the sides:\n%s", landscape)
+	}
+	if !strings.Contains(ConfigOverrideCSS(Config{}), "--o-mark-page-width: 210mm") {
+		t.Error("a zero-value Config must still get the portrait sheet")
+	}
+}
+
+func TestSaveConfigWritesPageAndDropsWidth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "config.toml")
+	seed := "# Theme.\nviewer_theme = \"github\"\n\n# Maximum width.\ndocument_max_width = \"297mm\"\n\n# Font.\nfont_size_base = \"default\"\n"
+	if err := os.WriteFile(p, []byte(seed), 0644); err != nil {
+		t.Fatal(err)
+	}
+	SaveConfig(Config{ViewerTheme: "night", PageOrientation: "landscape"})
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(got)
+	for _, want := range []string{"viewer_theme = \"night\"", "page_format = \"a4\"", "page_orientation = \"landscape\"", "# Theme.", "# Font.", "font_size_base = \"default\""} {
+		if !strings.Contains(out, want) {
+			t.Errorf("saved config is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "document_max_width") || strings.Contains(out, "Maximum width") {
+		t.Errorf("the retired width and its comment must be gone:\n%s", out)
+	}
+	if again := LoadConfig(); again.PageOrientation != "landscape" {
+		t.Errorf("reload after save: got %q, want landscape", again.PageOrientation)
+	}
+}
+
+func TestRemoveTOMLKey(t *testing.T) {
+	if got := removeTOMLKey("a = 1\nb = 2\n", "c"); got != "a = 1\nb = 2\n" {
+		t.Errorf("an absent key must leave the body alone, got %q", got)
+	}
+	if got := removeTOMLKey("a = 1\n\n# about b\nb = 2\n\nc = 3\n", "b"); got != "a = 1\n\nc = 3\n" {
+		t.Errorf("removing b: got %q", got)
+	}
+}

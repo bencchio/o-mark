@@ -11,6 +11,7 @@ Window {
     property int viewerThemeIndex: initialViewerThemeIndex
     property string toolbarPosition: toolbarPositionConfig
     property bool toolbarVisible: toolbarVisibleConfig
+    property string pageOrientation: pageOrientationConfig
     property int docReloadTick: docReloadSignal
 
     // Badge colors derived from the active viewer theme background.
@@ -22,6 +23,11 @@ Window {
                                       : Qt.darker(viewer.viewerBg, 1.5)
     readonly property color _badgeFg: _viewerLum < 0.5 ? "#d0d0d0" : "#303030"
 
+    // Fires only on a flip: the startup value is published before the window loads.
+    onPageOrientationChanged: reloadBadge.show(pageOrientation.toUpperCase())
+
+    function togglePageOrientation() { pageControl.toggle = !pageControl.toggle }
+
     onDocReloadTickChanged: {
         if (docReloadTick > 0) reloadBadge.show()
     }
@@ -31,6 +37,7 @@ Window {
     }
 
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
+    Shortcut { sequence: "Ctrl+R"; context: Qt.ApplicationShortcut; onActivated: root.togglePageOrientation() }
     Shortcut { sequences: [StandardKey.Find]; context: Qt.ApplicationShortcut; onActivated: {} }
     Shortcut {
         sequence: StandardKey.Print
@@ -53,7 +60,7 @@ Window {
         }
         _toolbarBeforePdf = root.toolbarVisible
         root.toolbarVisible = false
-        viewer.exportPdf(pdfExport.path, pdfExport.html)
+        viewer.exportPdf(pdfExport.path, pdfExport.html, pdfExport.orientation)
     }
 
     Component.onCompleted: viewer.requestFocus()
@@ -144,6 +151,7 @@ Window {
             onSearchPrevRequested: viewer.searchPrev()
             onSearchClosed: viewer.clearSearch()
             onPdfExportRequested: exportPdf()
+            onPageOrientationToggleRequested: root.togglePageOrientation()
         }
 
         Rectangle {

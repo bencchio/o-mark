@@ -22,7 +22,7 @@ var uiFiles embed.FS
 //go:embed resources/config.toml
 var defaultConfigTOML []byte
 
-var version = "0.7.3"
+var version = "0.7.4"
 
 // qtSink writes the session's output to QML context properties. It is the only
 // Qt-aware part of publication; the order the properties must land in lives in
@@ -83,6 +83,7 @@ func wirePdfExport(pm *qml.QQmlPropertyMap, sess *internal.Session) {
 	pm.Insert("path", qt.NewQVariant14(""))
 	pm.Insert("html", qt.NewQVariant14(""))
 	pm.Insert("exists", qt.NewQVariant8(false))
+	pm.Insert("orientation", qt.NewQVariant14(internal.OrientationPortrait))
 	pm.OnValueChanged(func(key string, value *qt.QVariant) {
 		if key != "prepare" {
 			return
@@ -91,6 +92,18 @@ func wirePdfExport(pm *qml.QQmlPropertyMap, sess *internal.Session) {
 		pm.Insert("path", qt.NewQVariant14(prep.Path))
 		pm.Insert("html", qt.NewQVariant14(prep.HTML))
 		pm.Insert("exists", qt.NewQVariant8(prep.Exists))
+		pm.Insert("orientation", qt.NewQVariant14(prep.Orientation))
+	})
+}
+
+// wirePageControl connects the QML property map's `toggle` handshake to the
+// session: each flip of the sheet orientation re-renders and republishes.
+func wirePageControl(pm *qml.QQmlPropertyMap, sess *internal.Session, sink internal.StateSink) {
+	pm.OnValueChanged(func(key string, value *qt.QVariant) {
+		if key != "toggle" {
+			return
+		}
+		sess.Apply(internal.OrientationToggled{}).Publish(sink)
 	})
 }
 
@@ -302,6 +315,9 @@ func main() {
 	pdfExport := qml.NewQQmlPropertyMap()
 	wirePdfExport(pdfExport, sess)
 	ctx.SetContextProperty("pdfExport", pdfExport.QObject)
+	pageControl := qml.NewQQmlPropertyMap()
+	wirePageControl(pageControl, sess, sink)
+	ctx.SetContextProperty("pageControl", pageControl.QObject)
 	engine.Load(qt.QUrl_FromLocalFile(filepath.Join(qmlDir, "main.qml")))
 	startThemeWatcher(sess, sink, omarchyWatcher)
 	startConfigWatcher(sess, sink, diskThemes, themesDir)
@@ -309,7 +325,7 @@ func main() {
 
 	qt.QApplication_Exec()
 
-	// Save the active theme and toolbar visibility to config on exit.
+	// Save the active theme, toolbar visibility and page orientation to config on exit.
 	if roots := engine.RootObjects(); len(roots) > 0 {
 		sess.Apply(internal.Persist{
 			ViewerThemeIndex: roots[0].Property("viewerThemeIndex").ToInt(),

@@ -268,3 +268,85 @@ func TestSessionPreparePdfUsesPaletteSource(t *testing.T) {
 		t.Errorf("an existing sibling PDF must short-circuit: %+v", again)
 	}
 }
+
+func TestSessionStartupPublishesPageOrientation(t *testing.T) {
+	isolateHome(t)
+	cfg := sessionConfig("github")
+	cfg.PageOrientation = "landscape"
+	s, state, err := StartSession(SessionOptions{
+		AbsPath: writeSessionDoc(t, "# Hi\n"), Title: "doc.md", Config: cfg,
+		Palette: &fakePalette{current: sessionPalette("#101010")},
+	})
+	if err != nil || s == nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	if state.Layout == nil || state.Layout.PageOrientation != "landscape" {
+		t.Errorf("startup layout: %+v", state.Layout)
+	}
+}
+
+func TestSessionOrientationToggleRerendersTheSheet(t *testing.T) {
+	isolateHome(t)
+	doc := writeSessionDoc(t, "# Hi\n")
+	s := newSession(t, doc, sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+
+	got := s.Apply(OrientationToggled{})
+	if got.Layout == nil || got.Layout.PageOrientation != "landscape" || got.Document == nil {
+		t.Fatalf("first toggle: %+v", got)
+	}
+	if !strings.Contains(got.Document.ViewerThemesJSON, "--o-mark-page-width: 297mm") {
+		t.Error("the re-rendered document does not carry the landscape sheet")
+	}
+	if back := s.Apply(OrientationToggled{}); back.Layout.PageOrientation != "portrait" {
+		t.Errorf("second toggle: %+v", back.Layout)
+	}
+}
+
+func TestSessionConfigReloadPreservesOrientation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(OmarchyStateEnv, "")
+	dir := filepath.Join(home, ".config", "o-mark")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("page_orientation = \"portrait\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s.Apply(OrientationToggled{})
+
+	got := s.Apply(ConfigChanged{})
+	if got.Layout.PageOrientation != "landscape" {
+		t.Errorf("a config edit yanked the session orientation: %q", got.Layout.PageOrientation)
+	}
+}
+
+func TestSessionPersistWritesOrientation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(OmarchyStateEnv, "")
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010")})
+	s.Apply(OrientationToggled{})
+	s.Apply(Persist{})
+
+	body, err := os.ReadFile(filepath.Join(home, ".config", "o-mark", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `page_orientation = "landscape"`) {
+		t.Errorf("orientation was not persisted:\n%s", body)
+	}
+}
+
+func TestSessionPreparePdfCarriesOrientation(t *testing.T) {
+	isolateHome(t)
+	s := newSession(t, writeSessionDoc(t, "# Hi\n"), sessionConfig("github"), nil, &fakePalette{current: sessionPalette("#101010"), print: sessionPalette("#ffffff")})
+	if got := s.PreparePdf().Orientation; got != "portrait" {
+		t.Errorf("default orientation: %q", got)
+	}
+	s.Apply(OrientationToggled{})
+	if got := s.PreparePdf().Orientation; got != "landscape" {
+		t.Errorf("after a toggle: %q", got)
+	}
+}

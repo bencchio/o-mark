@@ -6,8 +6,8 @@ Rectangle {
     id: toolbarRoot
     property var colors: null
     property real zoomFactor: 1.0
-    // 0 = search (real stop only while searchActive), 1 = ↺ reset, 2 = PDF, 3 = ComboBox
-    property int toolbarActiveIndex: 3
+    // 0 = search (real stop only while searchActive), 1 = ↺ reset, 2 = PDF, 3 = orientation, 4 = ComboBox
+    property int toolbarActiveIndex: 4
 
     property bool searchActive: false
     property int searchCount: 0
@@ -21,6 +21,7 @@ Rectangle {
     signal searchPrevRequested()
     signal searchClosed()
     signal pdfExportRequested()
+    signal pageOrientationToggleRequested()
 
     function _fileName(path) {
         var parts = (path || "").split("/")
@@ -77,24 +78,24 @@ Rectangle {
     function setToolbarElement(idx) {
         toolbarActiveIndex = idx
         if (idx === 0) searchField.forceActiveFocus()
-        else if (idx === 3) comboBox.forceActiveFocus()
+        else if (idx === 4) comboBox.forceActiveFocus()
         else toolbarRoot.forceActiveFocus()
     }
 
     // T → focus theme ComboBox, Z → focus zoom reset ↺.
-    // ← / → navigate between toolbar elements; Enter/Space activate ↺ or PDF.
+    // ← / → navigate between toolbar elements; Enter/Space activate ↺, PDF or the orientation.
     // Events from ComboBox propagate here when ComboBox doesn't handle them.
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_T) {
-            setToolbarElement(3)
+            setToolbarElement(4)
             event.accepted = true
         } else if (event.key === Qt.Key_Z) {
             setToolbarElement(1)
             event.accepted = true
         } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
             var next = toolbarActiveIndex + (event.key === Qt.Key_Right ? 1 : -1)
-            if (next < 1) next = 3
-            if (next > 3) next = 1
+            if (next < 1) next = 4
+            if (next > 4) next = 1
             setToolbarElement(next)
             event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter ||
@@ -104,6 +105,9 @@ Rectangle {
                 event.accepted = true
             } else if (toolbarActiveIndex === 2) {
                 toolbarRoot.pdfExportRequested()
+                event.accepted = true
+            } else if (toolbarActiveIndex === 3) {
+                toolbarRoot.pageOrientationToggleRequested()
                 event.accepted = true
             }
         }
@@ -262,6 +266,28 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: toolbarRoot.pdfExportRequested()
+            }
+        }
+
+        Text {
+            id: orientationButton
+            text: pageOrientationConfig === "landscape" ? "Landscape" : "Portrait"
+            readonly property bool keyboardFocused: toolbarRoot.toolbarActiveIndex === 3 && toolbarRoot.activeFocus
+            color: keyboardFocused || orientationArea.containsMouse
+                   ? (toolbarRoot.colors ? toolbarRoot.colors.accent : "#0366d6")
+                   : (toolbarRoot.colors ? toolbarRoot.colors.foreground : "#24292e")
+            font.pixelSize: 11
+            font.family: omarchyFont
+            font.underline: keyboardFocused
+            Layout.alignment: Qt.AlignVCenter
+
+            MouseArea {
+                id: orientationArea
+                anchors.fill: parent
+                anchors.margins: -4
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: toolbarRoot.pageOrientationToggleRequested()
             }
         }
 

@@ -2,9 +2,13 @@
 # Values: "system" (Omarchy palette) | "github" | "writer" | "night" | "sepia" | "mono" | "minimal"
 viewer_theme = "github"
 
-# Maximum document body width. "default" = use the width each theme defines;
-# or a CSS length (mm, px, %, ch...).
-document_max_width = "default"
+# Page format. Only "a4" exists for now; it sets the width and height of the sheet
+# on screen and in the exported PDF.
+page_format = "a4"
+
+# Page orientation at launch. Overwritten on quit with the session state (Ctrl+R).
+# Values: "portrait" | "landscape"
+page_orientation = "portrait"
 
 # Base document font size. "default" = use the size each theme defines;
 # or a size in px (e.g. "16" or "17px").

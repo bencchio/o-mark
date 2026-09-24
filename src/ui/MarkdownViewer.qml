@@ -57,13 +57,15 @@ Item {
     property bool firstLoadComplete: false
     property bool _pdfCapture: false
     property string _pdfPath: ""
+    property string _pdfOrientation: "portrait"
 
     signal pdfFinished(bool success)
 
-    function exportPdf(path, html) {
+    function exportPdf(path, html, orientation) {
         if (_pdfCapture || !path || !html) return
         _pdfCapture = true
         _pdfPath = path
+        _pdfOrientation = orientation
         webView.loadHtml(html, "o-mark://document")
     }
 
@@ -115,7 +117,9 @@ Item {
             for (var i = 0; i < scripts.length; i++)
                 webView.runJavaScript(scripts[i])
             if (_pdfCapture) {
-                webView.printToPdf(_pdfPath)
+                webView.printToPdf(_pdfPath, WebEngineView.A4,
+                                   _pdfOrientation === "landscape" ? WebEngineView.Landscape
+                                                                     : WebEngineView.Portrait)
                 return
             }
             if (savedScrollY > 0)

@@ -60,7 +60,6 @@ body {
 	line-height: 1.6;
 	color: var(--o-mark-fg);
 	background-color: var(--o-mark-bg);
-	max-width: 210mm;
 	font-size: 16px;
 	margin: 8mm auto;
 	padding: 0 10mm;
@@ -162,7 +161,7 @@ pre.mermaid { background-color: var(--o-mark-code-bg); border: 1px solid var(--o
 .o-mark-frontmatter { border-left: 3px solid var(--o-mark-border); margin: 0 0 6mm 0; padding: 2mm 0 2mm 4mm; opacity: 0.7; }
 .o-mark-frontmatter summary { font-size: 0.8em; cursor: pointer; user-select: none; }
 .o-mark-frontmatter-content { font-size: 0.8em; background: none; border: none; padding: 2mm 0 0 0; margin: 0; font-family: inherit; white-space: pre-wrap; color: var(--o-mark-fg); }
-.o-mark-page { min-height: 297mm; box-sizing: border-box; }
+.o-mark-page { box-sizing: border-box; }
 .o-mark-page > *:first-child { margin-top: 0; }
 .o-mark-page-gap { height: 3mm; margin: 6mm 0; background-color: var(--o-mark-page-gap-bg); }
 @media print {

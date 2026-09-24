@@ -132,3 +132,18 @@ func TestOmarchyStatePathDefaultsToHome(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// The sheet belongs to the page format, not to a theme.
+func TestThemesLeaveThePageSizeToTheConfig(t *testing.T) {
+	css := map[string]string{"system": paletteCSS(GetThemePalette("omarchy"), "sans-serif")}
+	for _, id := range []string{"github", "writer", "night", "sepia", "mono", "minimal"} {
+		css[id] = DiskThemeCSS(id, t.TempDir())
+	}
+	for id, c := range css {
+		for _, side := range []string{"210mm", "297mm"} {
+			if strings.Contains(c, side) {
+				t.Errorf("theme %s fixes a page side (%s)", id, side)
+			}
+		}
+	}
+}
